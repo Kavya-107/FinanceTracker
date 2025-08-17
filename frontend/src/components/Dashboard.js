@@ -21,6 +21,41 @@ const Dashboard = ({ onAddTransaction }) => {
     return [...defaultCategories[type], ...customCategories[type]];
   };
 
+  // Helper function to properly format date strings
+  const normalizeDate = (dateString) => {
+    if (!dateString) return new Date().toISOString().split('T')[0];
+    
+    // If it's already in YYYY-MM-DD format, return as is
+    if (typeof dateString === 'string' && dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      return dateString;
+    }
+    
+    // If it's an ISO string or has time component, extract just the date part
+    if (typeof dateString === 'string' && dateString.includes('T')) {
+      // Create a date object and format it properly to avoid timezone issues
+      const date = new Date(dateString);
+      // Use getFullYear, getMonth, getDate to avoid timezone conversion
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+    
+    // Fallback: try to parse and format
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) {
+        return new Date().toISOString().split('T')[0];
+      }
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    } catch (error) {
+      return new Date().toISOString().split('T')[0];
+    }
+  };
+
   useEffect(() => {
     fetchTransactions();
   }, []);
@@ -35,12 +70,12 @@ const Dashboard = ({ onAddTransaction }) => {
       // Ensure we have an array and normalize the data
       const transactionsData = Array.isArray(response.data) ? response.data : [];
       
-      // Normalize transaction data
+      // Normalize transaction data with proper date handling
       const normalizedTransactions = transactionsData.map(transaction => ({
         ...transaction,
         amount: parseFloat(transaction.amount) || 0,
-        date: transaction.date ? transaction.date.split('T')[0] : new Date().toISOString().split('T')[0],
-        type: (transaction.type || 'expense').toLowerCase().trim(), // Ensure lowercase and trimmed
+        date: normalizeDate(transaction.date), // Use the new normalizeDate function
+        type: (transaction.type || 'expense').toLowerCase().trim(),
         category: transaction.category || 'Other',
         notes: transaction.notes || ''
       }));
@@ -74,7 +109,7 @@ const Dashboard = ({ onAddTransaction }) => {
       type: transaction.type,
       category: transaction.category,
       amount: transaction.amount.toString(),
-      date: transaction.date,
+      date: normalizeDate(transaction.date), // Ensure proper date format
       notes: transaction.notes || ''
     });
   };
@@ -85,16 +120,17 @@ const Dashboard = ({ onAddTransaction }) => {
       const dataToUpdate = {
         ...editFormData,
         amount: parseFloat(editFormData.amount) || 0,
-        type: editFormData.type.toLowerCase().trim() // Ensure consistent format
+        type: editFormData.type.toLowerCase().trim(),
+        date: editFormData.date // Date is already in proper format from the input
       };
       
       const response = await transactionsAPI.update(editingTransaction, dataToUpdate);
       
-      // Normalize the updated transaction
+      // Normalize the updated transaction with proper date handling
       const updatedTransaction = {
         ...response.data,
         amount: parseFloat(response.data.amount) || 0,
-        date: response.data.date ? response.data.date.split('T')[0] : response.data.date,
+        date: normalizeDate(response.data.date), // Use normalizeDate here too
         type: (response.data.type || 'expense').toLowerCase().trim()
       };
       
@@ -165,13 +201,27 @@ const Dashboard = ({ onAddTransaction }) => {
       style: 'currency',
       currency: 'INR',
       minimumFractionDigits: 0,
-    maximumFractionDigits: 0
+      maximumFractionDigits: 0
     }).format(numAmount);
   };
 
   const formatDate = (dateString) => {
     try {
       if (!dateString) return 'Invalid Date';
+      
+      // For YYYY-MM-DD format, create date carefully to avoid timezone issues
+      if (typeof dateString === 'string' && dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        const [year, month, day] = dateString.split('-').map(Number);
+        const date = new Date(year, month - 1, day); // month is 0-indexed
+        
+        return date.toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric'
+        });
+      }
+      
+      // Fallback for other formats
       const date = new Date(dateString);
       if (isNaN(date.getTime())) return 'Invalid Date';
       return date.toLocaleDateString('en-US', {
