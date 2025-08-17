@@ -16,7 +16,7 @@ app.use(express.json());
 // Routes
 app.use('/auth', authRoutes);
 app.use('/transactions', transactionRoutes);
-app.use('/reports', reportRoutes);
+app.use('/api/reports', reportRoutes);
 
 app.get('/', (req, res) => {
   res.json({ message: 'Personal Finance Manager API' });
