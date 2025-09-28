@@ -3,7 +3,7 @@ import React from 'react';
 const Navigation = ({ user, currentView, onNavigate, onLogout }) => {
   return (
     <nav className="navigation">
-      <div className="nav-brand">Finance Manager</div>
+      <div className="nav-brand">FinMate</div>
       
       <div className="nav-menu">
         <div 

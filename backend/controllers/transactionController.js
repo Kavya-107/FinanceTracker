@@ -1,187 +1,347 @@
-const db = require('../config/database');
+const Transaction = require('../models/Transaction');
+const mongoose = require('mongoose');
 
+// Get all transactions for a user
 const getTransactions = async (req, res) => {
   try {
-    const [transactions] = await db.execute(
-      'SELECT * FROM transactions WHERE user_id = ? ORDER BY dateToday DESC, created_at DESC',
-      [req.user.userId]
-    );
+    const userId = req.user.userId;
     
-    // Debug log to see what's in the database
-    console.log('Raw transactions from database:', transactions);
+    const transactions = await Transaction.find({ 
+      userId: new mongoose.Types.ObjectId(userId) 
+    }).sort({ date: -1 });
     
-    // Map database fields to what frontend expects
-    const mappedTransactions = transactions.map(transaction => ({
-      id: transaction.id,
-      type: transaction.type1, // Map type1 to type for frontend
-      category: transaction.category,
-      amount: parseFloat(transaction.amount), // Ensure it's a number
-      date: transaction.dateToday, // Map dateToday to date for frontend
-      notes: transaction.notes || '',
-      created_at: transaction.created_at,
-      updated_at: transaction.updated_at
-    }));
-    
-    console.log('Mapped transactions being sent to frontend:', mappedTransactions);
-    res.json(mappedTransactions);
+    res.json({
+      success: true,
+      data: transactions
+    });
   } catch (error) {
-    console.error('Error in getTransactions:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error('Error fetching transactions:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching transactions',
+      error: error.message
+    });
   }
 };
 
-const addTransaction = async (req, res) => {
+// Filter transactions based on criteria
+const filterTransactions = async (req, res) => {
   try {
+    const userId = req.user.userId;
+    const {
+      categories,
+      startDate,
+      endDate,
+      minAmount,
+      maxAmount,
+      searchText,
+      type
+    } = req.query;
+
+    console.log('Filter request:', req.query);
+
+    // Build the query object
+    let query = { userId: new mongoose.Types.ObjectId(userId) };
+
+    // Category filter
+    if (categories) {
+      const categoryArray = Array.isArray(categories) ? categories : categories.split(',');
+      if (categoryArray.length > 0) {
+        query.category = { $in: categoryArray };
+      }
+    }
+
+    // Type filter
+    if (type && type !== '') {
+      query.type = type.toLowerCase();
+    }
+
+    // Amount range filter
+    if (minAmount || maxAmount) {
+      query.amount = {};
+      if (minAmount && parseFloat(minAmount) >= 0) {
+        query.amount.$gte = parseFloat(minAmount);
+      }
+      if (maxAmount && parseFloat(maxAmount) >= 0) {
+        query.amount.$lte = parseFloat(maxAmount);
+      }
+    }
+
+    // Date range filter
+    if (startDate || endDate) {
+      query.date = {};
+      if (startDate) {
+        query.date.$gte = new Date(startDate);
+      }
+      if (endDate) {
+        // Add one day and set to start of day to include the entire end date
+        const endDateTime = new Date(endDate);
+        endDateTime.setDate(endDateTime.getDate() + 1);
+        endDateTime.setHours(0, 0, 0, 0);
+        query.date.$lt = endDateTime;
+      }
+    }
+
+    // Search text filter (search in category and notes)
+    if (searchText && searchText.trim() !== '') {
+      const searchRegex = new RegExp(searchText.trim(), 'i');
+      query.$or = [
+        { category: searchRegex },
+        { notes: searchRegex }
+      ];
+    }
+
+    console.log('MongoDB Query:', JSON.stringify(query, null, 2));
+
+    const transactions = await Transaction.find(query).sort({ date: -1 });
+
+    console.log(`Found ${transactions.length} transactions matching filters`);
+
+    res.json({
+      success: true,
+      data: transactions,
+      count: transactions.length
+    });
+
+  } catch (error) {
+    console.error('Error filtering transactions:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while filtering transactions',
+      error: error.message
+    });
+  }
+};
+
+// Get a single transaction
+const getTransaction = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const transactionId = req.params.id;
+
+    const transaction = await Transaction.findOne({ 
+      _id: new mongoose.Types.ObjectId(transactionId),
+      userId: new mongoose.Types.ObjectId(userId)
+    });
+
+    if (!transaction) {
+      return res.status(404).json({
+        success: false,
+        message: 'Transaction not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: transaction
+    });
+  } catch (error) {
+    console.error('Error fetching transaction:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching transaction',
+      error: error.message
+    });
+  }
+};
+
+// Create a new transaction
+const createTransaction = async (req, res) => {
+  try {
+    const userId = req.user.userId;
     const { type, category, amount, date, notes } = req.body;
-    
-    // Debug log to see what frontend is sending
-    console.log('Received transaction data from frontend:', { type, category, amount, date, notes });
-    
-    // Validation
+
+    // Validate required fields
     if (!type || !category || !amount || !date) {
       return res.status(400).json({
-        message: 'Missing required fields: type, category, amount, date'
+        success: false,
+        message: 'Type, category, amount, and date are required'
       });
     }
-    
-    // Ensure type is either 'income' or 'expense'
-    if (type !== 'income' && type !== 'expense') {
+
+    // Validate type
+    if (!['income', 'expense'].includes(type.toLowerCase())) {
       return res.status(400).json({
-        message: 'Transaction type must be either "income" or "expense"'
+        success: false,
+        message: 'Type must be either "income" or "expense"'
       });
     }
-    
-    // Ensure amount is positive
-    const numericAmount = parseFloat(amount);
-    if (isNaN(numericAmount) || numericAmount <= 0) {
+
+    // Validate amount
+    const numAmount = parseFloat(amount);
+    if (isNaN(numAmount) || numAmount <= 0) {
       return res.status(400).json({
+        success: false,
         message: 'Amount must be a positive number'
       });
     }
-    
-    console.log('Inserting into database with type1 =', type, 'and dateToday =', date);
-    
-    // Insert using your database schema (type1, dateToday)
-    const [result] = await db.execute(
-      'INSERT INTO transactions (user_id, type1, category, amount, dateToday, notes) VALUES (?, ?, ?, ?, ?, ?)',
-      [req.user.userId, type, category, numericAmount, date, notes || '']
-    );
 
-    const [newTransaction] = await db.execute(
-      'SELECT * FROM transactions WHERE id = ?',
-      [result.insertId]
-    );
-    
-    console.log('New transaction from database:', newTransaction[0]);
-    
-    // Map database fields back to what frontend expects
-    const mappedTransaction = {
-      id: newTransaction[0].id,
-      type: newTransaction[0].type1, // Map type1 back to type
-      category: newTransaction[0].category,
-      amount: parseFloat(newTransaction[0].amount),
-      date: newTransaction[0].dateToday, // Map dateToday back to date
-      notes: newTransaction[0].notes || '',
-      created_at: newTransaction[0].created_at
-    };
-    
-    console.log('Mapped transaction being sent to frontend:', mappedTransaction);
-    res.status(201).json(mappedTransaction);
+    // Validate date
+    const transactionDate = new Date(date);
+    if (isNaN(transactionDate.getTime())) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid date format'
+      });
+    }
+
+    const transaction = new Transaction({
+      userId: new mongoose.Types.ObjectId(userId),
+      type: type.toLowerCase().trim(),
+      category: category.trim(),
+      amount: numAmount,
+      date: transactionDate,
+      notes: notes ? notes.trim() : ''
+    });
+
+    const savedTransaction = await transaction.save();
+
+    res.status(201).json({
+      success: true,
+      data: savedTransaction,
+      message: 'Transaction created successfully'
+    });
   } catch (error) {
-    console.error('Error in addTransaction:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error('Error creating transaction:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while creating transaction',
+      error: error.message
+    });
   }
 };
 
+// Update a transaction
 const updateTransaction = async (req, res) => {
   try {
-    const { id } = req.params;
+    const userId = req.user.userId;
+    const transactionId = req.params.id;
     const { type, category, amount, date, notes } = req.body;
-    
-    // Debug log
-    console.log('Updating transaction:', { id, type, category, amount, date, notes });
-    
-    // Validation
-    if (!type || !category || !amount || !date) {
-      return res.status(400).json({
-        message: 'Missing required fields: type, category, amount, date'
-      });
-    }
-    
-    // Ensure type is either 'income' or 'expense'
-    if (type !== 'income' && type !== 'expense') {
-      return res.status(400).json({
-        message: 'Transaction type must be either "income" or "expense"'
-      });
-    }
-    
-    const numericAmount = parseFloat(amount);
-    if (isNaN(numericAmount) || numericAmount <= 0) {
-      return res.status(400).json({
-        message: 'Amount must be a positive number'
+
+    // Find the transaction first
+    const existingTransaction = await Transaction.findOne({
+      _id: new mongoose.Types.ObjectId(transactionId),
+      userId: new mongoose.Types.ObjectId(userId)
+    });
+
+    if (!existingTransaction) {
+      return res.status(404).json({
+        success: false,
+        message: 'Transaction not found'
       });
     }
 
-    // Update using your database schema (type1, dateToday)
-    await db.execute(
-      'UPDATE transactions SET type1 = ?, category = ?, amount = ?, dateToday = ?, notes = ? WHERE id = ? AND user_id = ?',
-      [type, category, numericAmount, date, notes || '', id, req.user.userId]
+    // Validate updates
+    const updates = {};
+
+    if (type !== undefined) {
+      if (!['income', 'expense'].includes(type.toLowerCase())) {
+        return res.status(400).json({
+          success: false,
+          message: 'Type must be either "income" or "expense"'
+        });
+      }
+      updates.type = type.toLowerCase().trim();
+    }
+
+    if (category !== undefined) {
+      if (!category.trim()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Category cannot be empty'
+        });
+      }
+      updates.category = category.trim();
+    }
+
+    if (amount !== undefined) {
+      const numAmount = parseFloat(amount);
+      if (isNaN(numAmount) || numAmount <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Amount must be a positive number'
+        });
+      }
+      updates.amount = numAmount;
+    }
+
+    if (date !== undefined) {
+      const transactionDate = new Date(date);
+      if (isNaN(transactionDate.getTime())) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid date format'
+        });
+      }
+      updates.date = transactionDate;
+    }
+
+    if (notes !== undefined) {
+      updates.notes = notes.trim();
+    }
+
+    const updatedTransaction = await Transaction.findOneAndUpdate(
+      { 
+        _id: new mongoose.Types.ObjectId(transactionId),
+        userId: new mongoose.Types.ObjectId(userId)
+      },
+      updates,
+      { new: true }
     );
 
-    const [updatedTransaction] = await db.execute(
-      'SELECT * FROM transactions WHERE id = ? AND user_id = ?',
-      [id, req.user.userId]
-    );
-    
-    if (updatedTransaction.length === 0) {
-      return res.status(404).json({ message: 'Transaction not found' });
-    }
-    
-    // Map database fields back to what frontend expects
-    const mappedTransaction = {
-      id: updatedTransaction[0].id,
-      type: updatedTransaction[0].type1, // Map type1 back to type
-      category: updatedTransaction[0].category,
-      amount: parseFloat(updatedTransaction[0].amount),
-      date: updatedTransaction[0].dateToday, // Map dateToday back to date
-      notes: updatedTransaction[0].notes || '',
-      updated_at: updatedTransaction[0].updated_at
-    };
-    
-    console.log('Updated transaction being sent to frontend:', mappedTransaction);
-    res.json(mappedTransaction);
+    res.json({
+      success: true,
+      data: updatedTransaction,
+      message: 'Transaction updated successfully'
+    });
   } catch (error) {
-    console.error('Error in updateTransaction:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error('Error updating transaction:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while updating transaction',
+      error: error.message
+    });
   }
 };
 
+// Delete a transaction
 const deleteTransaction = async (req, res) => {
   try {
-    const { id } = req.params;
-    
-    console.log('Deleting transaction with id:', id);
-    
-    const [result] = await db.execute(
-      'DELETE FROM transactions WHERE id = ? AND user_id = ?',
-      [id, req.user.userId]
-    );
-    
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ message: 'Transaction not found' });
+    const userId = req.user.userId;
+    const transactionId = req.params.id;
+
+    const deletedTransaction = await Transaction.findOneAndDelete({
+      _id: new mongoose.Types.ObjectId(transactionId),
+      userId: new mongoose.Types.ObjectId(userId)
+    });
+
+    if (!deletedTransaction) {
+      return res.status(404).json({
+        success: false,
+        message: 'Transaction not found'
+      });
     }
-    
-    console.log('Successfully deleted transaction with id:', id);
-    res.json({ message: 'Transaction deleted successfully' });
+
+    res.json({
+      success: true,
+      message: 'Transaction deleted successfully',
+      data: deletedTransaction
+    });
   } catch (error) {
-    console.error('Error in deleteTransaction:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error('Error deleting transaction:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while deleting transaction',
+      error: error.message
+    });
   }
 };
 
 module.exports = {
   getTransactions,
-  addTransaction,
+  filterTransactions,
+  getTransaction,
+  createTransaction,
   updateTransaction,
   deleteTransaction
 };

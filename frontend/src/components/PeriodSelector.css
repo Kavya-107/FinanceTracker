@@ -1,0 +1,157 @@
+/* Period Selector specific styles - Add to your Reports.css */
+
+.period-selector-container {
+  margin-bottom: 2rem;
+}
+
+.period-selector-container .stat-card {
+  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  transition: box-shadow 0.2s ease;
+}
+
+.period-selector-container .stat-card:hover {
+  box-shadow: 0 8px 25px -5px rgba(0, 0, 0, 0.1);
+}
+
+/* Period type radio buttons styling */
+.period-selector-container input[type="radio"] {
+  margin-right: 0.5rem;
+  transform: scale(1.1);
+  accent-color: var(--primary-color, #2563eb);
+}
+
+/* Quick period buttons grid */
+.period-selector-container .nav-item {
+  background: #f8f9fa;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: #374151;
+}
+
+.period-selector-container .nav-item:hover {
+  background: #e5e7eb;
+  border-color: #d1d5db;
+  transform: translateY(-1px);
+}
+
+.period-selector-container .nav-item.active {
+  background: var(--primary-color, #2563eb);
+  border-color: var(--primary-color, #2563eb);
+  color: white;
+  box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2);
+}
+
+/* Custom date inputs */
+.period-selector-container input[type="date"] {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  transition: border-color 0.2s ease;
+}
+
+.period-selector-container input[type="date"]:focus {
+  outline: none;
+  border-color: var(--primary-color, #2563eb);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+/* Select dropdowns */
+.period-selector-container select {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  background-color: white;
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+
+.period-selector-container select:focus {
+  outline: none;
+  border-color: var(--primary-color, #2563eb);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+/* Button styles to match your existing buttons */
+.period-selector-container .btn-small {
+  padding: 0.375rem 0.75rem;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+
+.period-selector-container .btn-primary {
+  background-color: var(--primary-color, #2563eb);
+  border-color: var(--primary-color, #2563eb);
+  color: white;
+}
+
+.period-selector-container .btn-primary:hover:not(:disabled) {
+  background-color: var(--primary-hover, #1d4ed8);
+  border-color: var(--primary-hover, #1d4ed8);
+}
+
+.period-selector-container .btn-primary:disabled {
+  background-color: #9ca3af;
+  border-color: #9ca3af;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.period-selector-container .btn-secondary {
+  background-color: #f8f9fa;
+  border: 1px solid #d1d5db;
+  color: #374151;
+}
+
+.period-selector-container .btn-secondary:hover {
+  background-color: #e5e7eb;
+  border-color: #9ca3af;
+}
+
+/* Labels */
+.period-selector-container label {
+  color: #374151;
+  font-weight: 500;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .period-selector-container .stat-card {
+    padding: 1rem !important;
+  }
+  
+  .period-selector-container h3 {
+    font-size: 1rem !important;
+  }
+  
+  .period-selector-container .nav-item {
+    padding: 0.375rem 0.5rem;
+    font-size: 0.75rem;
+  }
+  
+  .period-selector-container [style*="grid-template-columns"] {
+    grid-template-columns: 1fr !important;
+    gap: 0.5rem !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .period-selector-container [style*="grid-template-columns: repeat(auto-fit, minmax(120px, 1fr))"] {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+  
+  .period-selector-container [style*="grid-template-columns: 1fr 1fr"] {
+    grid-template-columns: 1fr !important;
+  }
+}

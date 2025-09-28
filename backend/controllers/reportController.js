@@ -1,13 +1,13 @@
-const db = require('../config/database');
+const Transaction = require('../models/Transaction');
+const mongoose = require('mongoose');
 
 const getReports = async (req, res) => {
   try {
     const userId = req.user.userId;
-    const { month } = req.query; // Expected format: YYYY-MM
+    const { month } = req.query;
     
     console.log('Reports request - UserId:', userId, 'Month:', month);
     
-    // Validate month parameter
     if (!month || !/^\d{4}-\d{2}$/.test(month)) {
       return res.status(400).json({
         success: false,
@@ -15,14 +15,16 @@ const getReports = async (req, res) => {
       });
     }
 
-    // Check if there are any transactions for the specified month
-    const [transactionCheck] = await db.execute(`
-      SELECT COUNT(*) as count
-      FROM transactions 
-      WHERE user_id = ? AND DATE_FORMAT(dateToday, '%Y-%m') = ?
-    `, [userId, month]);
+    const [year, monthNum] = month.split('-');
+    const startDate = new Date(year, monthNum - 1, 1);
+    const endDate = new Date(year, monthNum, 0, 23, 59, 59, 999);
 
-    const hasTransactions = transactionCheck[0].count > 0;
+    const transactionCount = await Transaction.countDocuments({
+      userId: new mongoose.Types.ObjectId(userId),
+      date: { $gte: startDate, $lte: endDate }
+    });
+
+    const hasTransactions = transactionCount > 0;
 
     if (!hasTransactions) {
       return res.json({
@@ -36,48 +38,55 @@ const getReports = async (req, res) => {
       });
     }
 
-    // Get total income and expenses for the specified month
-    const [monthlyTotals] = await db.execute(`
-      SELECT 
-        type1,
-        SUM(amount) as total
-      FROM transactions 
-      WHERE user_id = ? AND DATE_FORMAT(dateToday, '%Y-%m') = ?
-      GROUP BY type1
-    `, [userId, month]);
+    const monthlyTotals = await Transaction.aggregate([
+      {
+        $match: {
+          userId: new mongoose.Types.ObjectId(userId),
+          date: { $gte: startDate, $lte: endDate }
+        }
+      },
+      {
+        $group: {
+          _id: '$type',
+          total: { $sum: '$amount' }
+        }
+      }
+    ]);
 
-    // Get expenses by category for the specified month
-    const [expensesByCategory] = await db.execute(`
-      SELECT 
-        category,
-        SUM(amount) as total
-      FROM transactions 
-      WHERE user_id = ? AND type1 = 'expense' AND DATE_FORMAT(dateToday, '%Y-%m') = ?
-      GROUP BY category
-      ORDER BY total DESC
-    `, [userId, month]);
+    const expensesByCategory = await Transaction.aggregate([
+      {
+        $match: {
+          userId: new mongoose.Types.ObjectId(userId),
+          type: 'expense',
+          date: { $gte: startDate, $lte: endDate }
+        }
+      },
+      {
+        $group: {
+          _id: '$category',
+          total: { $sum: '$amount' }
+        }
+      },
+      {
+        $sort: { total: -1 }
+      }
+    ]);
 
-    // Format the monthly totals
     const formattedMonthlyData = {
       month: month,
       income: 0,
       expense: 0
     };
 
+    const formattedTotals = { income: 0, expense: 0 };
     monthlyTotals.forEach(item => {
-      formattedMonthlyData[item.type1] = parseFloat(item.total);
+      formattedMonthlyData[item._id] = item.total;
+      formattedTotals[item._id] = item.total;
     });
 
-    // Format totals for backward compatibility
-    const formattedTotals = {};
-    monthlyTotals.forEach(item => {
-      formattedTotals[item.type1] = parseFloat(item.total);
-    });
-
-    // Format expenses by category
     const formattedExpensesByCategory = expensesByCategory.map(item => ({
-      category: item.category,
-      amount: parseFloat(item.total)
+      category: item._id,
+      amount: item.total
     }));
 
     const responseData = {
@@ -105,11 +114,10 @@ const getReports = async (req, res) => {
 const getWeeklyReports = async (req, res) => {
   try {
     const userId = req.user.userId;
-    const { week } = req.query; // Expected format: YYYY-MM-DD (Monday of the week)
+    const { week } = req.query;
     
     console.log('Weekly Reports request - UserId:', userId, 'Week:', week);
     
-    // Validate week parameter
     if (!week || !/^\d{4}-\d{2}-\d{2}$/.test(week)) {
       return res.status(400).json({
         success: false,
@@ -117,21 +125,19 @@ const getWeeklyReports = async (req, res) => {
       });
     }
 
-    // Calculate week end date (Sunday)
     const weekStart = new Date(week);
     const weekEnd = new Date(weekStart);
     weekEnd.setDate(weekEnd.getDate() + 6);
+    weekEnd.setHours(23, 59, 59, 999);
     
     const weekEndStr = weekEnd.toISOString().split('T')[0];
 
-    // Check if there are any transactions for the specified week
-    const [transactionCheck] = await db.execute(`
-      SELECT COUNT(*) as count
-      FROM transactions 
-      WHERE user_id = ? AND dateToday BETWEEN ? AND ?
-    `, [userId, week, weekEndStr]);
+    const transactionCount = await Transaction.countDocuments({
+      userId: new mongoose.Types.ObjectId(userId),
+      date: { $gte: weekStart, $lte: weekEnd }
+    });
 
-    const hasTransactions = transactionCheck[0].count > 0;
+    const hasTransactions = transactionCount > 0;
 
     if (!hasTransactions) {
       return res.json({
@@ -146,58 +152,78 @@ const getWeeklyReports = async (req, res) => {
       });
     }
 
-    // Get total income and expenses for the specified week
-    const [weeklyTotals] = await db.execute(`
-      SELECT 
-        type1,
-        SUM(amount) as total
-      FROM transactions 
-      WHERE user_id = ? AND dateToday BETWEEN ? AND ?
-      GROUP BY type1
-    `, [userId, week, weekEndStr]);
+    const weeklyTotals = await Transaction.aggregate([
+      {
+        $match: {
+          userId: new mongoose.Types.ObjectId(userId),
+          date: { $gte: weekStart, $lte: weekEnd }
+        }
+      },
+      {
+        $group: {
+          _id: '$type',
+          total: { $sum: '$amount' }
+        }
+      }
+    ]);
 
-    // Get expenses by category for the specified week
-    const [expensesByCategory] = await db.execute(`
-      SELECT 
-        category,
-        SUM(amount) as total
-      FROM transactions 
-      WHERE user_id = ? AND type1 = 'expense' AND dateToday BETWEEN ? AND ?
-      GROUP BY category
-      ORDER BY total DESC
-    `, [userId, week, weekEndStr]);
+    const expensesByCategory = await Transaction.aggregate([
+      {
+        $match: {
+          userId: new mongoose.Types.ObjectId(userId),
+          type: 'expense',
+          date: { $gte: weekStart, $lte: weekEnd }
+        }
+      },
+      {
+        $group: {
+          _id: '$category',
+          total: { $sum: '$amount' }
+        }
+      },
+      {
+        $sort: { total: -1 }
+      }
+    ]);
 
-    // Get daily breakdown for the week
-    const [dailyBreakdown] = await db.execute(`
-      SELECT 
-        dateToday,
-        type1,
-        SUM(amount) as total
-      FROM transactions 
-      WHERE user_id = ? AND dateToday BETWEEN ? AND ?
-      GROUP BY dateToday, type1
-      ORDER BY dateToday
-    `, [userId, week, weekEndStr]);
+    const dailyBreakdown = await Transaction.aggregate([
+      {
+        $match: {
+          userId: new mongoose.Types.ObjectId(userId),
+          date: { $gte: weekStart, $lte: weekEnd }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            date: { $dateToString: { format: "%Y-%m-%d", date: "$date" } },
+            type: '$type'
+          },
+          total: { $sum: '$amount' }
+        }
+      },
+      {
+        $sort: { '_id.date': 1 }
+      }
+    ]);
 
-    // Format weekly totals
     const formattedTotals = { income: 0, expense: 0 };
     weeklyTotals.forEach(item => {
-      formattedTotals[item.type1] = parseFloat(item.total);
+      formattedTotals[item._id] = item.total;
     });
 
-    // Format expenses by category
     const formattedExpensesByCategory = expensesByCategory.map(item => ({
-      category: item.category,
-      amount: parseFloat(item.total)
+      category: item._id,
+      amount: item.total
     }));
 
-    // Format daily breakdown
     const dailyBreakdownMap = {};
     dailyBreakdown.forEach(item => {
-      if (!dailyBreakdownMap[item.dateToday]) {
-        dailyBreakdownMap[item.dateToday] = { date: item.dateToday, income: 0, expense: 0 };
+      const date = item._id.date;
+      if (!dailyBreakdownMap[date]) {
+        dailyBreakdownMap[date] = { date: date, income: 0, expense: 0 };
       }
-      dailyBreakdownMap[item.dateToday][item.type1] = parseFloat(item.total);
+      dailyBreakdownMap[date][item._id.type] = item.total;
     });
 
     const formattedDailyBreakdown = Object.values(dailyBreakdownMap);
@@ -228,11 +254,10 @@ const getWeeklyReports = async (req, res) => {
 const getMonthlyReports = async (req, res) => {
   try {
     const userId = req.user.userId;
-    const { year } = req.query; // Expected format: YYYY
+    const { year } = req.query;
     
     console.log('Monthly Reports request - UserId:', userId, 'Year:', year);
     
-    // Validate year parameter
     if (!year || !/^\d{4}$/.test(year)) {
       return res.status(400).json({
         success: false,
@@ -240,38 +265,63 @@ const getMonthlyReports = async (req, res) => {
       });
     }
 
-    // Get monthly breakdown for the specified year
-    const [monthlyData] = await db.execute(`
-      SELECT 
-        DATE_FORMAT(dateToday, '%Y-%m') as month,
-        type1,
-        SUM(amount) as total
-      FROM transactions 
-      WHERE user_id = ? AND YEAR(dateToday) = ?
-      GROUP BY DATE_FORMAT(dateToday, '%Y-%m'), type1
-      ORDER BY month
-    `, [userId, year]);
+    const startDate = new Date(year, 0, 1);
+    const endDate = new Date(year, 11, 31, 23, 59, 59, 999);
 
-    // Get category breakdown for the year
-    const [categoryData] = await db.execute(`
-      SELECT 
-        category,
-        SUM(amount) as total
-      FROM transactions 
-      WHERE user_id = ? AND type1 = 'expense' AND YEAR(dateToday) = ?
-      GROUP BY category
-      ORDER BY total DESC
-    `, [userId, year]);
+    const monthlyData = await Transaction.aggregate([
+      {
+        $match: {
+          userId: new mongoose.Types.ObjectId(userId),
+          date: { $gte: startDate, $lte: endDate }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            month: { $dateToString: { format: "%Y-%m", date: "$date" } },
+            type: '$type'
+          },
+          total: { $sum: '$amount' }
+        }
+      },
+      {
+        $sort: { '_id.month': 1 }
+      }
+    ]);
 
-    // Get year totals
-    const [yearTotals] = await db.execute(`
-      SELECT 
-        type1,
-        SUM(amount) as total
-      FROM transactions 
-      WHERE user_id = ? AND YEAR(dateToday) = ?
-      GROUP BY type1
-    `, [userId, year]);
+    const categoryData = await Transaction.aggregate([
+      {
+        $match: {
+          userId: new mongoose.Types.ObjectId(userId),
+          type: 'expense',
+          date: { $gte: startDate, $lte: endDate }
+        }
+      },
+      {
+        $group: {
+          _id: '$category',
+          total: { $sum: '$amount' }
+        }
+      },
+      {
+        $sort: { total: -1 }
+      }
+    ]);
+
+    const yearTotals = await Transaction.aggregate([
+      {
+        $match: {
+          userId: new mongoose.Types.ObjectId(userId),
+          date: { $gte: startDate, $lte: endDate }
+        }
+      },
+      {
+        $group: {
+          _id: '$type',
+          total: { $sum: '$amount' }
+        }
+      }
+    ]);
 
     const hasTransactions = monthlyData.length > 0;
 
@@ -288,27 +338,25 @@ const getMonthlyReports = async (req, res) => {
       });
     }
 
-    // Format yearly totals
     const formattedYearlyTotals = { income: 0, expense: 0 };
     yearTotals.forEach(item => {
-      formattedYearlyTotals[item.type1] = parseFloat(item.total);
+      formattedYearlyTotals[item._id] = item.total;
     });
 
-    // Format monthly breakdown
     const monthlyBreakdownMap = {};
     monthlyData.forEach(item => {
-      if (!monthlyBreakdownMap[item.month]) {
-        monthlyBreakdownMap[item.month] = { month: item.month, income: 0, expense: 0 };
+      const month = item._id.month;
+      if (!monthlyBreakdownMap[month]) {
+        monthlyBreakdownMap[month] = { month: month, income: 0, expense: 0 };
       }
-      monthlyBreakdownMap[item.month][item.type1] = parseFloat(item.total);
+      monthlyBreakdownMap[month][item._id.type] = item.total;
     });
 
     const formattedMonthlyBreakdown = Object.values(monthlyBreakdownMap);
 
-    // Format category breakdown
     const formattedCategoryBreakdown = categoryData.map(item => ({
-      category: item.category,
-      amount: parseFloat(item.total)
+      category: item._id,
+      amount: item.total
     }));
 
     const responseData = {
@@ -338,54 +386,76 @@ const getReportsOverview = async (req, res) => {
   try {
     const userId = req.user.userId;
     
-    // Get total income and expenses for all time
-    const [totals] = await db.execute(`
-      SELECT 
-        type1,
-        SUM(amount) as total
-      FROM transactions 
-      WHERE user_id = ?
-      GROUP BY type1
-    `, [userId]);
+    const totals = await Transaction.aggregate([
+      {
+        $match: {
+          userId: new mongoose.Types.ObjectId(userId)
+        }
+      },
+      {
+        $group: {
+          _id: '$type',
+          total: { $sum: '$amount' }
+        }
+      }
+    ]);
 
-    // Get expenses by category for all time
-    const [expensesByCategory] = await db.execute(`
-      SELECT 
-        category,
-        SUM(amount) as total
-      FROM transactions 
-      WHERE user_id = ? AND type1 = 'expense'
-      GROUP BY category
-      ORDER BY total DESC
-    `, [userId]);
+    const expensesByCategory = await Transaction.aggregate([
+      {
+        $match: {
+          userId: new mongoose.Types.ObjectId(userId),
+          type: 'expense'
+        }
+      },
+      {
+        $group: {
+          _id: '$category',
+          total: { $sum: '$amount' }
+        }
+      },
+      {
+        $sort: { total: -1 }
+      }
+    ]);
 
-    // Get monthly data for the last 6 months
-    const [monthlyData] = await db.execute(`
-      SELECT 
-        DATE_FORMAT(dateToday, '%Y-%m') as month,
-        type1,
-        SUM(amount) as total
-      FROM transactions 
-      WHERE user_id = ? AND dateToday >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
-      GROUP BY DATE_FORMAT(dateToday, '%Y-%m'), type1
-      ORDER BY month
-    `, [userId]);
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+    
+    const monthlyData = await Transaction.aggregate([
+      {
+        $match: {
+          userId: new mongoose.Types.ObjectId(userId),
+          date: { $gte: sixMonthsAgo }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            month: { $dateToString: { format: "%Y-%m", date: "$date" } },
+            type: '$type'
+          },
+          total: { $sum: '$amount' }
+        }
+      },
+      {
+        $sort: { '_id.month': 1 }
+      }
+    ]);
 
-    // Format the response to match frontend expectations
-    const formattedTotals = {};
+    const formattedTotals = { income: 0, expense: 0 };
     totals.forEach(item => {
-      formattedTotals[item.type1] = parseFloat(item.total);
+      formattedTotals[item._id] = item.total;
     });
 
     const formattedExpensesByCategory = expensesByCategory.map(item => ({
-      category: item.category,
-      amount: parseFloat(item.total)
+      category: item._id,
+      amount: item.total
     }));
 
     const formattedMonthlyData = monthlyData.map(item => ({
-      month: item.month,
-      type1: item.type1,
-      amount: parseFloat(item.total)
+      month: item._id.month,
+      type1: item._id.type,
+      amount: item.total
     }));
 
     res.json({

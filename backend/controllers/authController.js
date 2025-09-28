@@ -1,18 +1,19 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const db = require('../config/database');
+const User = require('../models/User');
+const Category = require('../models/Category');
 
 const register = async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
-    // Check if user exists
-    const [existingUser] = await db.execute(
-      'SELECT * FROM users WHERE email = ?',
-      [email]
-    );
+    if (!name || !email || !password) {
+      return res.status(400).json({ message: 'All fields are required' });
+    }
 
-    if (existingUser.length > 0) {
+    // Check if user exists
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
       return res.status(400).json({ message: 'User already exists' });
     }
 
@@ -20,37 +21,31 @@ const register = async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Create user
-    const [result] = await db.execute(
-      'INSERT INTO users (username, email, password) VALUES (?, ?, ?)',
-      [name, email, hashedPassword]
-    );
+    const user = await User.create({ name, email, password: hashedPassword });
 
-    const userId = result.insertId;
-
-    // Insert default categories for new user
+    // Insert default categories
     const defaultCategories = ['Food', 'Rent', 'Salary', 'Bills', 'Transportation', 'Entertainment'];
-    for (const category of defaultCategories) {
-      await db.execute(
-        'INSERT INTO categories (user_id, cname) VALUES (?, ?)',
-        [userId, category]
-      );
-    }
+    // await Category.insertMany(
+    //   defaultCategories.map(name => ({ userId: user._id, name }))
+    // );
 
     // Generate JWT
     const token = jwt.sign(
-      { userId, email },
+      { userId: user._id, email: user.email },
       process.env.JWT_SECRET || 'your-secret-key',
       { expiresIn: '7d' }
     );
 
     res.status(201).json({
       token,
-      user: { id: userId, name, email }
+      user: { id: user._id, name: user.name, email: user.email },
     });
   } catch (error) {
-    console.error("Register Error:", error);
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
+  console.error('Register Error stack:', error.stack);
+  console.error('Register Error object:', JSON.stringify(error, null, 2));
+  res.status(500).json({ message: 'Server error', error: error.message });
+}
+
 };
 
 const login = async (req, res) => {
@@ -58,16 +53,11 @@ const login = async (req, res) => {
     const { email, password } = req.body;
 
     // Check if user exists
-    const [users] = await db.execute(
-      'SELECT * FROM users WHERE email = ?',
-      [email]
-    );
+    const user = await User.findOne({ email });
 
-    if (users.length === 0) {
+    if (!user) {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
-
-    const user = users[0];
 
     // Check password
     const isMatch = await bcrypt.compare(password, user.password);
@@ -77,14 +67,14 @@ const login = async (req, res) => {
 
     // Generate JWT
     const token = jwt.sign(
-      { userId: user.id, email: user.email },
+      { userId: user._id, email: user.email },
       process.env.JWT_SECRET || 'your-secret-key',
       { expiresIn: '7d' }
     );
 
     res.json({
       token,
-      user: { id: user.id, name: user.username, email: user.email }
+      user: { id: user._id, name: user.name, email: user.email }
     });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
@@ -92,3 +82,22 @@ const login = async (req, res) => {
 };
 
 module.exports = { register, login };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

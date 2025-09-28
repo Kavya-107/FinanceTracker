@@ -1,7 +1,7 @@
 {
   "name": "finance-manager-backend",
   "version": "1.0.0",
-  "description": "Personal Finance Manager Backend",
+  "description": "Personal Finance Manager Backend with MongoDB",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -13,7 +13,7 @@
     "dotenv": "^16.3.1",
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.2",
-    "mysql2": "^3.6.0"
+    "mongoose": "^8.0.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"

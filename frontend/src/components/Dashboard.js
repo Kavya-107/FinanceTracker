@@ -1,47 +1,95 @@
-import React, { useState, useEffect } from 'react';
-import { transactionsAPI } from '../services/api';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { transactionsAPI, authAPI } from '../services/api';
+import FilterComponent from './FilterComponent';
+import { Filter, AlertCircle, RefreshCw } from 'lucide-react';
 
 const Dashboard = ({ onAddTransaction }) => {
-  const [transactions, setTransactions] = useState([]);
+  const [allTransactions, setAllTransactions] = useState([]);
+  const [displayTransactions, setDisplayTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [debugInfo, setDebugInfo] = useState({});
+  
+  // Authentication state
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
+  
+  // Other existing state...
   const [editingTransaction, setEditingTransaction] = useState(null);
   const [editFormData, setEditFormData] = useState({});
   const [customCategories, setCustomCategories] = useState({
     income: [],
     expense: []
   });
+  const [activeFilters, setActiveFilters] = useState({});
+  const [showFilters, setShowFilters] = useState(false);
+  const [isFiltering, setIsFiltering] = useState(false);
 
   const defaultCategories = {
     expense: ['Food', 'Rent', 'Bills', 'Transportation', 'Entertainment', 'Shopping', 'Healthcare', 'Utilities', 'Other'],
     income: ['Salary', 'Scholarship', 'Freelance', 'Investment', 'Business', 'Gift', 'Bonus', 'Other']
   };
 
+  // Authentication check
+  useEffect(() => {
+    console.log('🔍 Checking authentication status...');
+    const token = localStorage.getItem('token');
+    
+    setDebugInfo(prev => ({
+      ...prev,
+      tokenExists: !!token,
+      tokenValue: token ? `${token.substring(0, 20)}...` : 'None',
+      timestamp: new Date().toISOString()
+    }));
+    
+    if (token) {
+      console.log('✅ Token found in localStorage');
+      setIsAuthenticated(true);
+    } else {
+      console.warn('⚠️ No token found - user needs to login');
+      setError('Please login to view your transactions');
+    }
+    
+    setAuthChecked(true);
+  }, []);
+
+  // Fetch transactions only after authentication is confirmed
+  useEffect(() => {
+    if (authChecked && isAuthenticated) {
+      fetchAllTransactions();
+    }
+  }, [authChecked, isAuthenticated]);
+
   const getAllCategories = (type) => {
     return [...defaultCategories[type], ...customCategories[type]];
   };
 
+  const getAllUniqueCategories = useMemo(() => {
+    const allCategories = new Set();
+    allTransactions.forEach(transaction => {
+      if (transaction.category) {
+        allCategories.add(transaction.category);
+      }
+    });
+    return Array.from(allCategories).sort();
+  }, [allTransactions]);
+
   // Helper function to properly format date strings
-  const normalizeDate = (dateString) => {
+  const normalizeDate = useCallback((dateString) => {
     if (!dateString) return new Date().toISOString().split('T')[0];
     
-    // If it's already in YYYY-MM-DD format, return as is
     if (typeof dateString === 'string' && dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
       return dateString;
     }
     
-    // If it's an ISO string or has time component, extract just the date part
     if (typeof dateString === 'string' && dateString.includes('T')) {
-      // Create a date object and format it properly to avoid timezone issues
       const date = new Date(dateString);
-      // Use getFullYear, getMonth, getDate to avoid timezone conversion
       const year = date.getFullYear();
       const month = String(date.getMonth() + 1).padStart(2, '0');
       const day = String(date.getDate()).padStart(2, '0');
       return `${year}-${month}-${day}`;
     }
     
-    // Fallback: try to parse and format
     try {
       const date = new Date(dateString);
       if (isNaN(date.getTime())) {
@@ -54,48 +102,208 @@ const Dashboard = ({ onAddTransaction }) => {
     } catch (error) {
       return new Date().toISOString().split('T')[0];
     }
-  };
-
-  useEffect(() => {
-    fetchTransactions();
   }, []);
 
-  const fetchTransactions = async () => {
+  // Enhanced fetchAllTransactions with comprehensive debugging
+  const fetchAllTransactions = useCallback(async () => {
+    console.log('🚀 Starting fetchAllTransactions...');
     setLoading(true);
     setError('');
+
     try {
+      // Pre-fetch checks
+      const token = localStorage.getItem('token');
+      console.log('Pre-fetch token check:', !!token);
+      
+      if (!token) {
+        throw new Error('No authentication token found. Please login.');
+      }
+
+      setDebugInfo(prev => ({
+        ...prev,
+        fetchStartTime: new Date().toISOString(),
+        fetchStatus: 'Starting...'
+      }));
+
+      console.log('📡 Calling transactionsAPI.getAll()...');
       const response = await transactionsAPI.getAll();
-      console.log('Fetched transactions:', response.data); // Debug log
       
-      // Ensure we have an array and normalize the data
-      const transactionsData = Array.isArray(response.data) ? response.data : [];
+      console.log('📦 Raw API response received:', {
+        hasResponse: !!response,
+        hasData: !!response?.data,
+        dataType: typeof response?.data,
+        isArray: Array.isArray(response?.data),
+        dataLength: response?.data?.length || 0
+      });
+
+      // Validate response structure
+      if (!response) {
+        throw new Error('No response received from API');
+      }
+
+      if (!response.data) {
+        throw new Error('Response does not contain data field');
+      }
+
+      const transactionsData = Array.isArray(response.data.data) ? response.data.data : [];
+      console.log(`📊 Processing ${transactionsData.length} transactions...`);
+
+      // Process and normalize transactions
+      const normalizedTransactions = transactionsData.map((transaction, index) => {
+        const normalized = {
+          ...transaction,
+          amount: parseFloat(transaction.amount) || 0,
+          date: normalizeDate(transaction.date),
+          type: (transaction.type || 'expense').toLowerCase().trim(),
+          category: transaction.category || 'Other',
+          notes: transaction.notes || ''
+        };
+        
+        console.log(`Transaction ${index}:`, {
+          id: normalized.id,
+          type: normalized.type,
+          amount: normalized.amount,
+          category: normalized.category,
+          date: normalized.date
+        });
+        
+        return normalized;
+      });
       
-      // Normalize transaction data with proper date handling
-      const normalizedTransactions = transactionsData.map(transaction => ({
-        ...transaction,
-        amount: parseFloat(transaction.amount) || 0,
-        date: normalizeDate(transaction.date), // Use the new normalizeDate function
-        type: (transaction.type || 'expense').toLowerCase().trim(),
-        category: transaction.category || 'Other',
-        notes: transaction.notes || ''
+      setAllTransactions(normalizedTransactions);
+      setDisplayTransactions(normalizedTransactions);
+      
+      setDebugInfo(prev => ({
+        ...prev,
+        fetchEndTime: new Date().toISOString(),
+        fetchStatus: 'Success',
+        transactionCount: normalizedTransactions.length,
+        lastFetch: new Date().toISOString()
       }));
       
-      console.log('Normalized transactions:', normalizedTransactions); // Debug log
-      setTransactions(normalizedTransactions);
+      console.log('✅ Transactions loaded successfully:', {
+        total: normalizedTransactions.length,
+        income: normalizedTransactions.filter(t => t.type === 'income').length,
+        expense: normalizedTransactions.filter(t => t.type === 'expense').length
+      });
+      
     } catch (error) {
-      console.error('Error fetching transactions:', error);
-      setError('Failed to load transactions. Please try again.');
-      setTransactions([]);
+      console.error('💥 Error in fetchAllTransactions:', {
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+      });
+      
+      setError(error.message || 'Failed to load transactions. Please try again.');
+      setAllTransactions([]);
+      setDisplayTransactions([]);
+      
+      setDebugInfo(prev => ({
+        ...prev,
+        fetchEndTime: new Date().toISOString(),
+        fetchStatus: 'Error',
+        lastError: error.message,
+        errorTime: new Date().toISOString()
+      }));
+      
     } finally {
       setLoading(false);
     }
-  };
+  }, [normalizeDate]);
 
+  // Client-side filtering function
+  const applyFilters = useCallback((transactions, filters) => {
+    console.log('🔍 Applying filters:', filters);
+    return transactions.filter(transaction => {
+      if (filters.categories && filters.categories.length > 0) {
+        if (!filters.categories.includes(transaction.category)) {
+          return false;
+        }
+      }
+
+      if (filters.type && filters.type !== transaction.type) {
+        return false;
+      }
+
+      if (filters.minAmount && parseFloat(filters.minAmount) > 0) {
+        if (transaction.amount < parseFloat(filters.minAmount)) {
+          return false;
+        }
+      }
+      if (filters.maxAmount && parseFloat(filters.maxAmount) > 0) {
+        if (transaction.amount > parseFloat(filters.maxAmount)) {
+          return false;
+        }
+      }
+
+      if (filters.startDate) {
+        if (transaction.date < filters.startDate) {
+          return false;
+        }
+      }
+      if (filters.endDate) {
+        if (transaction.date > filters.endDate) {
+          return false;
+        }
+      }
+
+      if (filters.searchText && filters.searchText.trim()) {
+        const searchTerm = filters.searchText.toLowerCase().trim();
+        const searchableText = [
+          transaction.category,
+          transaction.notes,
+          transaction.amount.toString()
+        ].join(' ').toLowerCase();
+        
+        if (!searchableText.includes(searchTerm)) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, []);
+
+  // Handle filter changes
+  const handleFilterChange = useCallback(async (newFilters) => {
+    setActiveFilters(newFilters);
+    setIsFiltering(true);
+
+    const hasActiveFilters = Object.values(newFilters).some(value => 
+      value !== undefined && value !== null && value !== '' && 
+      (!Array.isArray(value) || value.length > 0)
+    );
+
+    try {
+      if (hasActiveFilters) {
+        const filteredTransactions = applyFilters(allTransactions, newFilters);
+        setDisplayTransactions(filteredTransactions);
+      } else {
+        setDisplayTransactions(allTransactions);
+      }
+    } catch (error) {
+      console.error('Error applying filters:', error);
+      setError('Error applying filters. Please try again.');
+    } finally {
+      setIsFiltering(false);
+    }
+  }, [allTransactions, applyFilters]);
+
+  // Manual refresh function
+  const handleRefresh = useCallback(() => {
+    console.log('🔄 Manual refresh triggered');
+    fetchAllTransactions();
+  }, [fetchAllTransactions]);
+
+  // Rest of your existing methods (handleDelete, handleEdit, etc.)
   const handleDelete = async (id) => {
     if (window.confirm('Are you sure you want to delete this transaction?')) {
       try {
         await transactionsAPI.delete(id);
-        setTransactions(transactions.filter(t => t.id !== id));
+        await fetchAllTransactions();
+        if (Object.keys(activeFilters).length > 0) {
+          handleFilterChange(activeFilters);
+        }
       } catch (error) {
         console.error('Error deleting transaction:', error);
         setError('Failed to delete transaction. Please try again.');
@@ -103,40 +311,36 @@ const Dashboard = ({ onAddTransaction }) => {
     }
   };
 
-  const handleEdit = (transaction) => {
+  const handleEdit = useCallback((transaction) => {
     setEditingTransaction(transaction.id);
     setEditFormData({
       type: transaction.type,
       category: transaction.category,
       amount: transaction.amount.toString(),
-      date: normalizeDate(transaction.date), // Ensure proper date format
+      date: normalizeDate(transaction.date),
       notes: transaction.notes || ''
     });
-  };
+  }, [normalizeDate]);
 
   const handleEditSubmit = async (e) => {
     e.preventDefault();
+    e.stopPropagation();
+    
     try {
       const dataToUpdate = {
         ...editFormData,
         amount: parseFloat(editFormData.amount) || 0,
         type: editFormData.type.toLowerCase().trim(),
-        date: editFormData.date // Date is already in proper format from the input
+        date: editFormData.date
       };
       
-      const response = await transactionsAPI.update(editingTransaction, dataToUpdate);
+      await transactionsAPI.update(editingTransaction, dataToUpdate);
+      await fetchAllTransactions();
       
-      // Normalize the updated transaction with proper date handling
-      const updatedTransaction = {
-        ...response.data,
-        amount: parseFloat(response.data.amount) || 0,
-        date: normalizeDate(response.data.date), // Use normalizeDate here too
-        type: (response.data.type || 'expense').toLowerCase().trim()
-      };
-      
-      setTransactions(transactions.map(t => 
-        t.id === editingTransaction ? updatedTransaction : t
-      ));
+      if (Object.keys(activeFilters).length > 0) {
+        handleFilterChange(activeFilters);
+      }
+
       setEditingTransaction(null);
       setEditFormData({});
     } catch (error) {
@@ -145,57 +349,46 @@ const Dashboard = ({ onAddTransaction }) => {
     }
   };
 
-  const handleEditCancel = () => {
+  const handleEditCancel = useCallback(() => {
     setEditingTransaction(null);
     setEditFormData({});
-  };
+  }, []);
 
-  const handleEditChange = (e) => {
+  const handleEditChange = useCallback((e) => {
     const { name, value } = e.target;
     
     if (name === 'type') {
-      // Reset category when transaction type changes
-      setEditFormData({
-        ...editFormData,
+      setEditFormData(prev => ({
+        ...prev,
         [name]: value,
         category: getAllCategories(value)[0] || 'Other'
-      });
+      }));
     } else {
-      setEditFormData({
-        ...editFormData,
+      setEditFormData(prev => ({
+        ...prev,
         [name]: value
-      });
+      }));
     }
-  };
+  }, []);
 
-  // Calculate totals with better error handling and debugging
-  const calculateTotals = () => {
-    const validTransactions = transactions.filter(t => 
+  // Calculate totals from displayed transactions
+  const calculateTotals = useMemo(() => {
+    const validTransactions = displayTransactions.filter(t => 
       t && typeof t.amount === 'number' && !isNaN(t.amount) && t.type
     );
-
-    console.log('Valid transactions for calculation:', validTransactions); // Debug log
-    console.log('Transaction types found:', [...new Set(validTransactions.map(t => t.type))]); // Debug log
 
     const incomeTransactions = validTransactions.filter(t => t.type === 'income');
     const expenseTransactions = validTransactions.filter(t => t.type === 'expense');
     
-    console.log('Income transactions:', incomeTransactions); // Debug log
-    console.log('Expense transactions:', expenseTransactions); // Debug log
-
     const totalIncome = incomeTransactions.reduce((sum, t) => sum + Math.abs(t.amount), 0);
     const totalExpenses = expenseTransactions.reduce((sum, t) => sum + Math.abs(t.amount), 0);
     
     const balance = totalIncome - totalExpenses;
 
-    console.log('Calculated totals:', { totalIncome, totalExpenses, balance }); // Debug log
-
     return { totalIncome, totalExpenses, balance, totalTransactions: validTransactions.length };
-  };
+  }, [displayTransactions]);
 
-  const { totalIncome, totalExpenses, balance, totalTransactions } = calculateTotals();
-
-  const formatCurrency = (amount) => {
+  const formatCurrency = useCallback((amount) => {
     const numAmount = parseFloat(amount) || 0;
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
@@ -203,16 +396,15 @@ const Dashboard = ({ onAddTransaction }) => {
       minimumFractionDigits: 0,
       maximumFractionDigits: 0
     }).format(numAmount);
-  };
+  }, []);
 
-  const formatDate = (dateString) => {
+  const formatDate = useCallback((dateString) => {
     try {
       if (!dateString) return 'Invalid Date';
       
-      // For YYYY-MM-DD format, create date carefully to avoid timezone issues
       if (typeof dateString === 'string' && dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
         const [year, month, day] = dateString.split('-').map(Number);
-        const date = new Date(year, month - 1, day); // month is 0-indexed
+        const date = new Date(year, month - 1, day);
         
         return date.toLocaleDateString('en-US', {
           year: 'numeric',
@@ -221,7 +413,6 @@ const Dashboard = ({ onAddTransaction }) => {
         });
       }
       
-      // Fallback for other formats
       const date = new Date(dateString);
       if (isNaN(date.getTime())) return 'Invalid Date';
       return date.toLocaleDateString('en-US', {
@@ -232,13 +423,55 @@ const Dashboard = ({ onAddTransaction }) => {
     } catch (error) {
       return 'Invalid Date';
     }
-  };
+  }, []);
+
+  // Show authentication error if not logged in
+  if (authChecked && !isAuthenticated) {
+    return (
+      <div className="container">
+        <div style={{ 
+          textAlign: 'center', 
+          padding: '3rem',
+          background: 'white',
+          borderRadius: '12px',
+          boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+          margin: '2rem auto',
+          maxWidth: '500px'
+        }}>
+          <AlertCircle size={48} style={{ color: '#dc3545', marginBottom: '1rem' }} />
+          <h2 style={{ color: '#dc3545', marginBottom: '1rem' }}>Authentication Required</h2>
+          <p style={{ color: '#666', marginBottom: '2rem' }}>
+            Please log in to view your financial dashboard and transactions.
+          </p>
+          <button 
+            onClick={() => window.location.href = '/login'} 
+            className="btn btn-primary"
+            style={{
+              background: '#007bff',
+              border: 'none',
+              padding: '0.75rem 2rem',
+              borderRadius: '8px',
+              color: 'white',
+              fontWeight: 'bold',
+              cursor: 'pointer'
+            }}
+          >
+            Go to Login
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
       <div className="container">
         <div style={{ textAlign: 'center', padding: '2rem' }}>
+          <RefreshCw size={48} style={{ animation: 'spin 1s linear infinite', color: '#007bff', marginBottom: '1rem' }} />
           <div>Loading transactions...</div>
+          <div style={{ fontSize: '0.9rem', color: '#666', marginTop: '0.5rem' }}>
+            {debugInfo.fetchStatus && `Status: ${debugInfo.fetchStatus}`}
+          </div>
         </div>
       </div>
     );
@@ -248,34 +481,172 @@ const Dashboard = ({ onAddTransaction }) => {
     <div className="container">
       <div className="dashboard">
         <div className="dashboard-header">
-          <h1> Financial Dashboard</h1>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h1>Financial Dashboard</h1>
+            <button 
+              onClick={handleRefresh}
+              className="btn btn-secondary"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                background: '#6c757d',
+                border: 'none',
+                padding: '0.5rem 1rem',
+                borderRadius: '6px',
+                color: 'white',
+                cursor: 'pointer'
+              }}
+            >
+              <RefreshCw size={16} />
+              Refresh
+            </button>
+          </div>
+
+          {/* Debug Information Panel (only show if there are issues) */}
+          {(error || Object.keys(debugInfo).length > 0) && (
+            <details style={{ 
+              marginTop: '1rem', 
+              padding: '1rem', 
+              background: '#f8f9fa', 
+              borderRadius: '6px',
+              fontSize: '0.9rem'
+            }}>
+              <summary style={{ cursor: 'pointer', fontWeight: 'bold', marginBottom: '0.5rem' }}>
+                🔍 Debug Information
+              </summary>
+              <div style={{ marginTop: '0.5rem' }}>
+                <div><strong>Authentication:</strong> {isAuthenticated ? '✅ Authenticated' : '❌ Not Authenticated'}</div>
+                <div><strong>Token Present:</strong> {debugInfo.tokenExists ? '✅ Yes' : '❌ No'}</div>
+                <div><strong>Total Transactions:</strong> {allTransactions.length}</div>
+                <div><strong>Displayed Transactions:</strong> {displayTransactions.length}</div>
+                <div><strong>Last Fetch:</strong> {debugInfo.lastFetch || 'Never'}</div>
+                <div><strong>Fetch Status:</strong> {debugInfo.fetchStatus || 'Unknown'}</div>
+                {debugInfo.lastError && (
+                  <div><strong>Last Error:</strong> <span style={{ color: '#dc3545' }}>{debugInfo.lastError}</span></div>
+                )}
+              </div>
+            </details>
+          )}
+
           {error && (
-            <div className="alert alert-danger" style={{ marginTop: '1rem' }}>
-              {error}
+            <div className="alert alert-danger" style={{ 
+              marginTop: '1rem',
+              padding: '1rem',
+              background: '#f8d7da',
+              border: '1px solid #f5c6cb',
+              borderRadius: '6px',
+              color: '#721c24'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <AlertCircle size={20} />
+                <strong>Error:</strong> {error}
+              </div>
+              <button 
+                onClick={handleRefresh}
+                style={{
+                  marginTop: '0.5rem',
+                  background: '#721c24',
+                  color: 'white',
+                  border: 'none',
+                  padding: '0.5rem 1rem',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '0.9rem'
+                }}
+              >
+                Try Again
+              </button>
             </div>
           )}
         </div>
 
+        {/* Filter Controls */}
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center',
+          marginBottom: '1rem'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <button 
+              onClick={() => setShowFilters(!showFilters)}
+              className="btn btn-secondary"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
+              }}
+            >
+              <Filter size={16} />
+              {showFilters ? 'Hide Filters' : 'Show Filters'}
+            </button>
+            
+            {isFiltering && (
+              <span style={{ color: '#666', fontSize: '0.9rem' }}>
+                Applying filters...
+              </span>
+            )}
+            
+            {Object.keys(activeFilters).some(key => activeFilters[key] && (Array.isArray(activeFilters[key]) ? activeFilters[key].length > 0 : activeFilters[key] !== '')) && (
+              <span style={{ color: '#007bff', fontSize: '0.9rem' }}>
+                Showing {displayTransactions.length} of {allTransactions.length} transactions
+              </span>
+            )}
+          </div>
+          
+          <button 
+            className="btn btn-primary" 
+            onClick={onAddTransaction}
+            style={{
+              background: '#007bff',
+              border: 'none',
+              padding: '0.75rem 1.5rem',
+              borderRadius: '8px',
+              color: 'white',
+              fontWeight: 'bold',
+              cursor: 'pointer'
+            }}
+          >
+            Add Transaction
+          </button>
+        </div>
+
+        {/* Filter Component */}
+        {showFilters && (
+          <FilterComponent
+            onFilterChange={handleFilterChange}
+            availableCategories={getAllUniqueCategories}
+            isOpen={showFilters}
+            onClose={() => setShowFilters(false)}
+          />
+        )}
+
         {/* Stats Cards */}
-        <div className="dashboard-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+        <div className="dashboard-stats" style={{ 
+          display: 'grid', 
+          gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', 
+          gap: '1rem', 
+          marginBottom: '2rem' 
+        }}>
           <div className="stat-card" style={{ 
             background: 'white', 
             padding: '1.5rem', 
             borderRadius: '12px', 
             boxShadow: '0 4px 6px rgba(0,0,0,0.1)', 
             textAlign: 'center',
-            borderLeft: `4px solid ${balance >= 0 ? '#28a745' : '#dc3545'}`
+            borderLeft: `4px solid ${calculateTotals.balance >= 0 ? '#28a745' : '#dc3545'}`
           }}>
             <div className="stat-value" style={{ 
               fontSize: '2rem', 
               fontWeight: 'bold', 
-              color: balance >= 0 ? '#28a745' : '#dc3545',
+              color: calculateTotals.balance >= 0 ? '#28a745' : '#dc3545',
               marginBottom: '0.5rem'
             }}>
-              {formatCurrency(balance)}
+              {formatCurrency(calculateTotals.balance)}
             </div>
             <div className="stat-label" style={{ color: '#666', fontSize: '0.9rem' }}>
-               Current Balance
+              Current Balance
             </div>
           </div>
           
@@ -293,10 +664,10 @@ const Dashboard = ({ onAddTransaction }) => {
               color: '#28a745',
               marginBottom: '0.5rem'
             }}>
-              {formatCurrency(totalIncome)}
+              {formatCurrency(calculateTotals.totalIncome)}
             </div>
             <div className="stat-label" style={{ color: '#666', fontSize: '0.9rem' }}>
-               Total Income
+              Total Income
             </div>
           </div>
           
@@ -314,10 +685,10 @@ const Dashboard = ({ onAddTransaction }) => {
               color: '#dc3545',
               marginBottom: '0.5rem'
             }}>
-              {formatCurrency(totalExpenses)}
+              {formatCurrency(calculateTotals.totalExpenses)}
             </div>
             <div className="stat-label" style={{ color: '#666', fontSize: '0.9rem' }}>
-               Total Expenses
+              Total Expenses
             </div>
           </div>
           
@@ -335,10 +706,10 @@ const Dashboard = ({ onAddTransaction }) => {
               color: '#007bff',
               marginBottom: '0.5rem'
             }}>
-              {totalTransactions}
+              {calculateTotals.totalTransactions}
             </div>
             <div className="stat-label" style={{ color: '#666', fontSize: '0.9rem' }}>
-               Total Transactions
+              Total Transactions
             </div>
           </div>
         </div>
@@ -356,7 +727,12 @@ const Dashboard = ({ onAddTransaction }) => {
             alignItems: 'center', 
             marginBottom: '1.5rem' 
           }}>
-            <h3 style={{ margin: 0, color: '#333' }}>Recent Transactions</h3>
+            <h3 style={{ margin: 0, color: '#333' }}>
+              {Object.keys(activeFilters).some(key => activeFilters[key] && (Array.isArray(activeFilters[key]) ? activeFilters[key].length > 0 : activeFilters[key] !== '')) 
+                ? `Filtered Transactions (${displayTransactions.length})` 
+                : 'Recent Transactions'
+              }
+            </h3>
             <button 
               className="btn btn-primary" 
               onClick={onAddTransaction}
@@ -370,23 +746,26 @@ const Dashboard = ({ onAddTransaction }) => {
                 cursor: 'pointer'
               }}
             >
-               Add Transaction
+              Add Transaction
             </button>
           </div>
           
           <div className="transactions-list">
-            {transactions.length === 0 ? (
+            {displayTransactions.length === 0 ? (
               <div style={{ 
                 padding: '3rem', 
                 textAlign: 'center', 
                 color: '#666',
                 fontSize: '1.1rem'
               }}>
-                 No transactions found. Add your first transaction to get started!
+                {allTransactions.length === 0 
+                  ? 'No transactions found. Add your first transaction to get started!'
+                  : 'No transactions match your current filters. Try adjusting your filter criteria.'
+                }
               </div>
             ) : (
-              transactions
-                .sort((a, b) => new Date(b.date) - new Date(a.date)) // Sort by date, newest first
+              displayTransactions
+                .sort((a, b) => new Date(b.date) - new Date(a.date))
                 .slice(0, 10)
                 .map(transaction => (
                   <div 
@@ -404,12 +783,12 @@ const Dashboard = ({ onAddTransaction }) => {
                       transition: 'all 0.2s ease'
                     }}
                     onMouseEnter={(e) => {
-                      e.target.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
-                      e.target.style.transform = 'translateY(-2px)';
+                      e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+                      e.currentTarget.style.transform = 'translateY(-2px)';
                     }}
                     onMouseLeave={(e) => {
-                      e.target.style.boxShadow = 'none';
-                      e.target.style.transform = 'translateY(0)';
+                      e.currentTarget.style.boxShadow = 'none';
+                      e.currentTarget.style.transform = 'translateY(0)';
                     }}
                   >
                     {editingTransaction === transaction.id ? (
@@ -499,7 +878,7 @@ const Dashboard = ({ onAddTransaction }) => {
                               cursor: 'pointer'
                             }}
                           >
-                             Save
+                            Save
                           </button>
                           <button 
                             type="button" 
@@ -514,7 +893,7 @@ const Dashboard = ({ onAddTransaction }) => {
                               cursor: 'pointer'
                             }}
                           >
-                             Cancel
+                            Cancel
                           </button>
                         </div>
                       </form>
@@ -541,7 +920,7 @@ const Dashboard = ({ onAddTransaction }) => {
                                 border: `1px solid ${transaction.type === 'income' ? '#c3e6cb' : '#f5c6cb'}`
                               }}
                             >
-                              {transaction.type === 'income' ? ' INCOME' : ' EXPENSE'}
+                              {transaction.type === 'income' ? 'INCOME' : 'EXPENSE'}
                             </span>
                             <span className="category-name" style={{ fontWeight: '500', color: '#333' }}>
                               {transaction.category}
@@ -554,7 +933,7 @@ const Dashboard = ({ onAddTransaction }) => {
                                 fontStyle: 'italic', 
                                 color: '#888' 
                               }}>
-                                {' '} • {transaction.notes}
+                                • {transaction.notes}
                               </span>
                             )}
                           </div>
@@ -587,10 +966,8 @@ const Dashboard = ({ onAddTransaction }) => {
                                 cursor: 'pointer',
                                 fontSize: '0.85rem'
                               }}
-                              onMouseEnter={(e) => e.target.style.transform = 'scale(1.05)'}
-                              onMouseLeave={(e) => e.target.style.transform = 'scale(1)'}
                             >
-                               Edit
+                              Edit
                             </button>
                             <button 
                               className="btn btn-danger btn-small"
@@ -604,10 +981,8 @@ const Dashboard = ({ onAddTransaction }) => {
                                 cursor: 'pointer',
                                 fontSize: '0.85rem'
                               }}
-                              onMouseEnter={(e) => e.target.style.transform = 'scale(1.05)'}
-                              onMouseLeave={(e) => e.target.style.transform = 'scale(1)'}
                             >
-                               Delete
+                              Delete
                             </button>
                           </div>
                         </div>
@@ -618,7 +993,7 @@ const Dashboard = ({ onAddTransaction }) => {
             )}
           </div>
           
-          {transactions.length > 10 && (
+          {displayTransactions.length > 10 && (
             <div style={{ 
               textAlign: 'center', 
               marginTop: '1rem', 
@@ -628,13 +1003,24 @@ const Dashboard = ({ onAddTransaction }) => {
               background: '#f8f9fa',
               borderRadius: '6px'
             }}>
-               Showing 10 most recent transactions out of {transactions.length} total
+              Showing 10 most recent transactions out of {displayTransactions.length} filtered transactions
             </div>
           )}
         </div>
       </div>
+      
+      <style jsx>{`
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 };
 
 export default Dashboard;
+
+
+
+
