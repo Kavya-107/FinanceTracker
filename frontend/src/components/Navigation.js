@@ -18,6 +18,7 @@ const Navigation = ({ user, currentView, onNavigate, onLogout }) => {
         >
           Add Transaction
         </div>
+        
         <div 
           className={`nav-item ${currentView === 'reports' ? 'active' : ''}`}
           onClick={() => onNavigate('reports')}

@@ -4,6 +4,7 @@ import Register from './components/Register';
 import Dashboard from './components/Dashboard';
 import AddTransaction from './components/AddTransaction';
 import Reports from './components/Reports';
+
 import Navigation from './components/Navigation';
 
 function App() {
@@ -50,6 +51,8 @@ function App() {
         return <AddTransaction onBack={() => setCurrentView('dashboard')} />;
       case 'reports':
         return <Reports />;
+
+
       default:
         return <Dashboard onAddTransaction={() => setCurrentView('add-transaction')} />;
     }

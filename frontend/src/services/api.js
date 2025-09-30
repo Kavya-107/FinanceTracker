@@ -241,18 +241,3 @@ export const reportsAPI = {
     }
   }
 };
-
-// Utility function to test API connection
-export const testConnection = async () => {
-  try {
-    console.log(' Testing API connection...');
-    const response = await api.get('/api/health'); // Add a health check endpoint in your backend
-    console.log(' API connection successful');
-    return true;
-  } catch (error) {
-    console.error(' API connection failed:', error.message);
-    return false;
-  }
-};
-
-export default api;

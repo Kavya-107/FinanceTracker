@@ -11,8 +11,20 @@ import {
   Legend,
   ArcElement,
 } from 'chart.js';
-import { Bar, Pie, Line } from 'react-chartjs-2';
-import { ChevronLeft, ChevronRight, Calendar, TrendingUp, PieChart, BarChart3, Download, AlertTriangle, TrendingDown } from 'lucide-react';
+import { Bar, Pie } from 'react-chartjs-2';
+import { 
+  ChevronLeft, 
+  ChevronRight, 
+  Calendar, 
+  TrendingUp, 
+  Download, 
+  AlertTriangle, 
+  TrendingDown, 
+  ArrowLeft, 
+  RefreshCw,
+  BarChart3 
+} from 'lucide-react';
+import './Reports.css';
 
 // Register Chart.js components
 ChartJS.register(
@@ -29,18 +41,15 @@ ChartJS.register(
 
 // Helper functions for date formatting
 const dateUtils = {
-  // Get current month in YYYY-MM format
   getCurrentMonth: () => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   },
 
-  // Get current year in YYYY format
   getCurrentYear: () => {
     return new Date().getFullYear().toString();
   },
 
-  // Get Monday of current week in YYYY-MM-DD format
   getCurrentWeekMonday: () => {
     const now = new Date();
     const day = now.getDay();
@@ -49,16 +58,13 @@ const dateUtils = {
     return monday.toISOString().split('T')[0];
   },
 
-  // Validate and format month (YYYY-MM)
   formatMonth: (dateString) => {
     if (!dateString) return dateUtils.getCurrentMonth();
     
-    // If it's already in YYYY-MM format
     if (/^\d{4}-\d{2}$/.test(dateString)) {
       return dateString;
     }
     
-    // If it's a Date object or timestamp
     const date = new Date(dateString);
     if (!isNaN(date.getTime())) {
       return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
@@ -67,16 +73,13 @@ const dateUtils = {
     return dateUtils.getCurrentMonth();
   },
 
-  // Validate and format year (YYYY)
   formatYear: (dateString) => {
     if (!dateString) return dateUtils.getCurrentYear();
     
-    // If it's already in YYYY format
     if (/^\d{4}$/.test(dateString)) {
       return dateString;
     }
     
-    // If it's a Date object or other format
     const date = new Date(dateString);
     if (!isNaN(date.getTime())) {
       return date.getFullYear().toString();
@@ -85,11 +88,9 @@ const dateUtils = {
     return dateUtils.getCurrentYear();
   },
 
-  // Validate and format week (YYYY-MM-DD of Monday)
   formatWeek: (dateString) => {
     if (!dateString) return dateUtils.getCurrentWeekMonday();
     
-    // If it's already in YYYY-MM-DD format
     if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
       const date = new Date(dateString);
       if (!isNaN(date.getTime())) {
@@ -97,7 +98,6 @@ const dateUtils = {
       }
     }
     
-    // If it's a Date object
     const date = new Date(dateString);
     if (!isNaN(date.getTime())) {
       const day = date.getDay();
@@ -110,7 +110,7 @@ const dateUtils = {
   }
 };
 
-// Updated API service with better error handling and proper formatting
+// API service
 const reportsAPI = {
   baseURL: process.env.REACT_APP_API_URL || 'http://localhost:5000',
 
@@ -152,18 +152,15 @@ const reportsAPI = {
     }
   },
 
-  // Get transactions and process them for reports
   getReports: async (month) => {
     const formattedMonth = dateUtils.formatMonth(month);
     
     try {
-      // First, get all transactions
       const response = await reportsAPI.fetchWithAuth('/api/transactions');
       const transactions = response.data || [];
       
-      // Filter transactions for the specific month
       const monthTransactions = transactions.filter(transaction => {
-        const transactionMonth = transaction.date.substring(0, 7); // YYYY-MM
+        const transactionMonth = transaction.date.substring(0, 7);
         return transactionMonth === formattedMonth;
       });
 
@@ -180,7 +177,6 @@ const reportsAPI = {
         };
       }
 
-      // Process the data
       const totals = monthTransactions.reduce((acc, transaction) => {
         if (transaction.type === 'income') {
           acc.income += transaction.amount;
@@ -190,7 +186,6 @@ const reportsAPI = {
         return acc;
       }, { income: 0, expense: 0 });
 
-      // Group expenses by category
       const expensesByCategory = monthTransactions
         .filter(t => t.type === 'expense')
         .reduce((acc, transaction) => {
@@ -204,9 +199,8 @@ const reportsAPI = {
         }, [])
         .sort((a, b) => b.amount - a.amount);
 
-      // Daily breakdown
       const dailyBreakdown = monthTransactions.reduce((acc, transaction) => {
-        const date = transaction.date.split('T')[0]; // Get YYYY-MM-DD
+        const date = transaction.date.split('T')[0];
         const existing = acc.find(item => item.date === date);
         if (existing) {
           if (transaction.type === 'income') {
@@ -242,7 +236,6 @@ const reportsAPI = {
     }
   },
 
-  // Weekly reports
   getWeeklyReports: async (weekStart) => {
     const formattedWeek = dateUtils.formatWeek(weekStart);
     
@@ -250,12 +243,10 @@ const reportsAPI = {
       const response = await reportsAPI.fetchWithAuth('/api/transactions');
       const transactions = response.data || [];
       
-      // Calculate week end date
       const startDate = new Date(formattedWeek);
       const endDate = new Date(startDate);
       endDate.setDate(startDate.getDate() + 6);
       
-      // Filter transactions for the specific week
       const weekTransactions = transactions.filter(transaction => {
         const transactionDate = new Date(transaction.date.split('T')[0]);
         return transactionDate >= startDate && transactionDate <= endDate;
@@ -273,7 +264,6 @@ const reportsAPI = {
         };
       }
 
-      // Process weekly data similar to monthly
       const totals = weekTransactions.reduce((acc, transaction) => {
         if (transaction.type === 'income') {
           acc.income += transaction.amount;
@@ -332,7 +322,6 @@ const reportsAPI = {
     }
   },
 
-  // Yearly reports
   getMonthlyReports: async (year) => {
     const formattedYear = dateUtils.formatYear(year);
     
@@ -340,7 +329,6 @@ const reportsAPI = {
       const response = await reportsAPI.fetchWithAuth('/api/transactions');
       const transactions = response.data || [];
       
-      // Filter transactions for the specific year
       const yearTransactions = transactions.filter(transaction => {
         const transactionYear = transaction.date.substring(0, 4);
         return transactionYear === formattedYear;
@@ -358,7 +346,6 @@ const reportsAPI = {
         };
       }
 
-      // Process yearly data
       const yearlyTotals = yearTransactions.reduce((acc, transaction) => {
         if (transaction.type === 'income') {
           acc.income += transaction.amount;
@@ -381,9 +368,8 @@ const reportsAPI = {
         }, [])
         .sort((a, b) => b.amount - a.amount);
 
-      // Monthly breakdown for the year
       const monthlyBreakdown = yearTransactions.reduce((acc, transaction) => {
-        const month = transaction.date.substring(0, 7); // YYYY-MM
+        const month = transaction.date.substring(0, 7);
         const existing = acc.find(item => item.month === month);
         if (existing) {
           if (transaction.type === 'income') {
@@ -418,22 +404,33 @@ const reportsAPI = {
     }
   },
 
-  getOverviewReports: async () => {
+  getCustomRangeReports: async (startDate, endDate) => {
     try {
       const response = await reportsAPI.fetchWithAuth('/api/transactions');
       const transactions = response.data || [];
       
-      if (transactions.length === 0) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      
+      const rangeTransactions = transactions.filter(transaction => {
+        const transactionDate = new Date(transaction.date);
+        return transactionDate >= start && transactionDate <= end;
+      });
+
+      if (rangeTransactions.length === 0) {
         return {
           success: true,
           data: {
             hasTransactions: false,
-            totals: { income: 0, expense: 0 }
+            totals: { income: 0, expense: 0 },
+            expensesByCategory: [],
+            dailyBreakdown: []
           }
         };
       }
 
-      const totals = transactions.reduce((acc, transaction) => {
+      const totals = rangeTransactions.reduce((acc, transaction) => {
         if (transaction.type === 'income') {
           acc.income += transaction.amount;
         } else if (transaction.type === 'expense') {
@@ -442,28 +439,55 @@ const reportsAPI = {
         return acc;
       }, { income: 0, expense: 0 });
 
+      const expensesByCategory = rangeTransactions
+        .filter(t => t.type === 'expense')
+        .reduce((acc, transaction) => {
+          const existing = acc.find(item => item.category === transaction.category);
+          if (existing) {
+            existing.amount += transaction.amount;
+          } else {
+            acc.push({ category: transaction.category, amount: transaction.amount });
+          }
+          return acc;
+        }, [])
+        .sort((a, b) => b.amount - a.amount);
+
+      const dailyBreakdown = rangeTransactions.reduce((acc, transaction) => {
+        const date = transaction.date.split('T')[0];
+        const existing = acc.find(item => item.date === date);
+        if (existing) {
+          if (transaction.type === 'income') {
+            existing.income += transaction.amount;
+          } else {
+            existing.expense += transaction.amount;
+          }
+        } else {
+          acc.push({
+            date,
+            income: transaction.type === 'income' ? transaction.amount : 0,
+            expense: transaction.type === 'expense' ? transaction.amount : 0
+          });
+        }
+        return acc;
+      }, [])
+      .sort((a, b) => a.date.localeCompare(b.date));
+
       return {
         success: true,
         data: {
           hasTransactions: true,
-          totals
+          totals,
+          expensesByCategory,
+          dailyBreakdown,
+          dateRange: { start: startDate, end: endDate }
         }
       };
 
     } catch (error) {
-      console.error('Error fetching overview reports:', error);
+      console.error('Error fetching custom range reports:', error);
       throw error;
     }
   }
-};
-
-// Helper function to get Monday of a given date
-const getMondayOfWeek = (date) => {
-  const d = new Date(date);
-  const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-  const monday = new Date(d.setDate(diff));
-  return monday.toISOString().split('T')[0];
 };
 
 // Download functionality
@@ -483,12 +507,10 @@ const downloadUtils = {
   downloadAsCSV: (data, filename) => {
     let csv = '';
     
-    // Add summary data
     csv += 'Financial Report Summary\n';
     csv += 'Period,Income,Expenses,Balance\n';
     csv += `"${data.period || filename}","${data.income || 0}","${data.expenses || 0}","${(data.income || 0) - (data.expenses || 0)}"\n\n`;
     
-    // Add category breakdown if available
     if (data.categories && data.categories.length > 0) {
       csv += 'Category Breakdown\n';
       csv += 'Category,Amount\n';
@@ -516,8 +538,10 @@ const Reports = () => {
   const [previousPeriodData, setPreviousPeriodData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
+  const [generatingCustomReport, setGeneratingCustomReport] = useState(false);
 
-  // Initialize currentPeriod based on report type with proper formatting
   useEffect(() => {
     const now = new Date();
     if (reportType === 'weekly') {
@@ -530,7 +554,7 @@ const Reports = () => {
   }, [reportType]);
 
   useEffect(() => {
-    if (currentPeriod && currentPeriod.length > 0) {
+    if (currentPeriod && currentPeriod.length > 0 && reportType !== 'custom') {
       fetchReports();
       fetchPreviousPeriodData();
     }
@@ -542,7 +566,23 @@ const Reports = () => {
       setError(null);
       
       let apiResponse;
-      if (reportType === 'weekly') {
+      
+      if (reportType === 'custom') {
+        if (!customStartDate || !customEndDate) {
+          setError('Please select both start and end dates');
+          setLoading(false);
+          return;
+        }
+        if (new Date(customStartDate) > new Date(customEndDate)) {
+          setError('Start date must be before end date');
+          setLoading(false);
+          return;
+        }
+        
+        setGeneratingCustomReport(true);
+        apiResponse = await reportsAPI.getCustomRangeReports(customStartDate, customEndDate);
+        setGeneratingCustomReport(false);
+      } else if (reportType === 'weekly') {
         apiResponse = await reportsAPI.getWeeklyReports(currentPeriod);
       } else if (reportType === 'yearly') {
         apiResponse = await reportsAPI.getMonthlyReports(currentPeriod);
@@ -556,7 +596,8 @@ const Reports = () => {
       
     } catch (error) {
       console.error('Fetch reports error:', error);
-      setError(error.message);
+      setError(`Failed to load reports: ${error.message}`);
+      setGeneratingCustomReport(false);
     } finally {
       setLoading(false);
     }
@@ -577,7 +618,7 @@ const Reports = () => {
         response = await reportsAPI.getMonthlyReports(prevYear);
       } else {
         const [year, month] = currentPeriod.split('-').map(Number);
-        const prevDate = new Date(year, month - 2); // month - 2 because months are 0-indexed
+        const prevDate = new Date(year, month - 2);
         const previousPeriod = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
         response = await reportsAPI.getReports(previousPeriod);
       }
@@ -593,7 +634,33 @@ const Reports = () => {
     }
   };
 
-  // Smart insights generation
+  const handleGoBack = () => {
+    window.history.back();
+  };
+
+  const handleTryDifferentPeriod = () => {
+    const now = new Date();
+    if (reportType === 'weekly') {
+      setCurrentPeriod(dateUtils.getCurrentWeekMonday());
+    } else if (reportType === 'yearly') {
+      setCurrentPeriod(dateUtils.getCurrentYear());
+    } else {
+      setCurrentPeriod(dateUtils.getCurrentMonth());
+    }
+    setReportData(null);
+    setLoading(true);
+  };
+
+  const handleTryDifferentReportType = () => {
+    if (reportType === 'custom') {
+      setReportType('monthly');
+    } else {
+      setReportType('weekly');
+    }
+    setReportData(null);
+    setLoading(true);
+  };
+
   const generateInsights = () => {
     if (!reportData || !reportData.hasTransactions) return [];
     
@@ -603,7 +670,6 @@ const Reports = () => {
       ? reportData.categoryBreakdown 
       : reportData.expensesByCategory;
 
-    // Top spending category
     if (expenseCategories && expenseCategories.length > 0) {
       const topCategory = expenseCategories[0];
       const totalExpenses = totals.expense;
@@ -619,7 +685,6 @@ const Reports = () => {
       }
     }
 
-    // Comparison with previous period
     if (previousPeriodData && previousPeriodData.hasTransactions) {
       const prevTotals = getPreviousTotals();
       const expenseChange = totals.expense - prevTotals.expense;
@@ -636,7 +701,6 @@ const Reports = () => {
       }
     }
 
-    // Budget health check
     const savings = totals.income - totals.expense;
     const savingsRate = totals.income > 0 ? ((savings / totals.income) * 100).toFixed(1) : 0;
     
@@ -676,7 +740,11 @@ const Reports = () => {
   };
 
   const formatPeriodDisplay = () => {
-    if (reportType === 'weekly' && currentPeriod) {
+    if (reportType === 'custom' && reportData?.dateRange) {
+      const start = new Date(reportData.dateRange.start);
+      const end = new Date(reportData.dateRange.end);
+      return `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} - ${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+    } else if (reportType === 'weekly' && currentPeriod) {
       const startDate = new Date(currentPeriod);
       const endDate = new Date(startDate);
       endDate.setDate(startDate.getDate() + 6);
@@ -732,7 +800,6 @@ const Reports = () => {
     }
   };
 
-  // Download handlers
   const handleDownload = (format) => {
     if (!reportData) return;
     
@@ -758,7 +825,6 @@ const Reports = () => {
     }
   };
 
-  // Chart data preparation
   const getMainChartData = () => {
     if (!reportData) return null;
 
@@ -831,6 +897,32 @@ const Reports = () => {
           ]
         };
       }
+    } else if (reportType === 'custom' && reportData.dailyBreakdown?.length > 0) {
+      const dailyData = reportData.dailyBreakdown.map(day => ({
+        date: new Date(day.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        income: day.income,
+        expense: day.expense
+      }));
+
+      return {
+        labels: dailyData.map(d => d.date),
+        datasets: [
+          {
+            label: 'Income',
+            data: dailyData.map(d => d.income),
+            backgroundColor: '#22c55e',
+            borderColor: '#16a34a',
+            borderWidth: 1
+          },
+          {
+            label: 'Expenses',
+            data: dailyData.map(d => d.expense),
+            backgroundColor: '#f97316',
+            borderColor: '#ea580c',
+            borderWidth: 1
+          }
+        ]
+      };
     } else {
       return {
         labels: [formatPeriodDisplay()],
@@ -880,16 +972,14 @@ const Reports = () => {
     };
   };
 
-  // Get totals for summary cards
   const getTotals = () => {
     if (!reportData) return { income: 0, expense: 0 };
     
     if (reportType === 'yearly') {
       return reportData.yearlyTotals || { income: 0, expense: 0 };
-    } else if (reportType === 'weekly') {
+    } else if (reportType === 'weekly' || reportType === 'custom') {
       return reportData.totals || { income: 0, expense: 0 };
     } else {
-      // Monthly - handle both possible response formats
       return reportData.totals || {
         income: reportData.monthlyData?.income || 0,
         expense: reportData.monthlyData?.expense || 0
@@ -921,7 +1011,7 @@ const Reports = () => {
       },
       title: {
         display: true,
-        text: `${reportType === 'weekly' ? 'Daily Breakdown' : reportType === 'yearly' ? 'Monthly Breakdown' : 'Income vs Expenses'} - ${formatPeriodDisplay()}`,
+        text: `${reportType === 'weekly' ? 'Daily Breakdown' : reportType === 'yearly' ? 'Monthly Breakdown' : reportType === 'custom' ? 'Daily Breakdown' : 'Income vs Expenses'} - ${formatPeriodDisplay()}`,
         font: { size: 16 }
       }
     },
@@ -963,23 +1053,12 @@ const Reports = () => {
 
   if (loading) {
     return (
-      <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
-        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-          <h1 style={{ fontSize: '2rem', fontWeight: '600' }}>Financial Reports</h1>
+      <div className="loading-container">
+        <div className="loading-header">
+          <h1 className="loading-title">Financial Reports</h1>
         </div>
-        <div style={{ 
-          background: 'white', 
-          borderRadius: '8px', 
-          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)', 
-          padding: '2rem',
-          textAlign: 'center'
-        }}>
-          <div style={{ 
-            height: '60px', 
-            background: 'linear-gradient(90deg, #f0f0f0 25%, transparent 37%, #f0f0f0 63%)',
-            borderRadius: '8px',
-            marginBottom: '1rem'
-          }}></div>
+        <div className="loading-content">
+          <div className="loading-shimmer"></div>
           <p>Loading reports...</p>
         </div>
       </div>
@@ -988,52 +1067,22 @@ const Reports = () => {
 
   if (error) {
     return (
-      <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
-        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-          <h1 style={{ fontSize: '2rem', fontWeight: '600' }}>Financial Reports</h1>
+      <div className="error-container">
+        <div className="error-header">
+          <h1 className="error-title">Financial Reports</h1>
         </div>
-        <div style={{ 
-          background: 'white', 
-          borderRadius: '8px', 
-          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)', 
-          padding: '2rem',
-          textAlign: 'center'
-        }}>
-          <div style={{
-            background: '#fee2e2',
-            border: '1px solid #fecaca',
-            borderRadius: '8px',
-            padding: '1rem',
-            marginBottom: '1rem'
-          }}>
+        <div className="error-content">
+          <div className="error-alert">
             <h4>Connection Error</h4>
             <p>{error}</p>
           </div>
-          <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
-            <button 
-              onClick={() => window.history.back()}
-              style={{
-                background: '#6b7280',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                padding: '0.5rem 1rem',
-                cursor: 'pointer'
-              }}
-            >
+          <div className="action-buttons">
+            <button className="action-btn" onClick={handleGoBack}>
+              <ArrowLeft size={16} />
               Go Back
             </button>
-            <button 
-              onClick={fetchReports}
-              style={{
-                background: '#3b82f6',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                padding: '0.5rem 1rem',
-                cursor: 'pointer'
-              }}
-            >
+            <button className="action-btn primary" onClick={fetchReports}>
+              <RefreshCw size={16} />
               Try Again
             </button>
           </div>
@@ -1044,19 +1093,45 @@ const Reports = () => {
 
   if (!reportData || !reportData.hasTransactions) {
     return (
-      <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
-        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-          <h1 style={{ fontSize: '2rem', fontWeight: '600' }}>Financial Reports</h1>
+      <div className="no-data-container">
+        <div className="no-data-header">
+          <h1 className="no-data-title">Financial Reports</h1>
         </div>
-        <div style={{ 
-          background: 'white', 
-          borderRadius: '8px', 
-          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)', 
-          padding: '2rem',
-          textAlign: 'center'
-        }}>
-          <h3 style={{ marginBottom: '1rem' }}>No transactions found for {formatPeriodDisplay()}</h3>
-          <p>Start adding transactions to see your financial reports.</p>
+        <div className="no-data-content">
+          <div className="no-data-alert">
+            <h3 className="no-data-title-inner">No Transactions Found</h3>
+            <p className="no-data-message">
+              No transactions found for <strong>{formatPeriodDisplay()}</strong>. 
+              {reportType === 'custom' ? ' Try selecting a different date range.' : ' Try selecting a different period or report type.'}
+            </p>
+            
+            <div className="action-buttons">
+              <button className="action-btn" onClick={handleGoBack}>
+                <ArrowLeft size={16} />
+                Go Back
+              </button>
+              
+              <button className="action-btn primary" onClick={handleTryDifferentPeriod}>
+                <RefreshCw size={16} />
+                Try Current Period
+              </button>
+              
+              <button className="action-btn success" onClick={handleTryDifferentReportType}>
+                <BarChart3 size={16} />
+                Switch Report Type
+              </button>
+            </div>
+          </div>
+          
+          <div className="tips-section">
+            <h4 className="tips-title">Quick Tips:</h4>
+            <ul className="tips-list">
+              <li>Make sure you have transactions recorded for the selected period</li>
+              <li>Try switching to a different report type (Weekly, Monthly, Yearly)</li>
+              <li>Check if you're filtering by the correct date range</li>
+              <li>Navigate to previous/next periods using the navigation buttons</li>
+            </ul>
+          </div>
         </div>
       </div>
     );
@@ -1068,155 +1143,124 @@ const Reports = () => {
   const pieData = getPieData();
 
   return (
-    <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto', background: '#f8fafc', minHeight: '100vh' }}>
+    <div className="reports-container">
       {/* Header */}
-      <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-        <h1 style={{ fontSize: '2rem', fontWeight: '600', marginBottom: '1rem' }}>Financial Reports</h1>
-        <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
-          <button 
-            onClick={() => handleDownload('csv')}
-            style={{
-              background: '#6b7280',
-              color: 'white',
-              border: 'none',
-              borderRadius: '6px',
-              padding: '0.5rem 1rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              cursor: 'pointer',
-              fontSize: '0.875rem'
-            }}
-          >
-            <Download size={16} />
-            CSV
-          </button>
-          <button 
-            onClick={() => handleDownload('json')}
-            style={{
-              background: '#6b7280',
-              color: 'white',
-              border: 'none',
-              borderRadius: '6px',
-              padding: '0.5rem 1rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              cursor: 'pointer',
-              fontSize: '0.875rem'
-            }}
-          >
-            <Download size={16} />
-            JSON
-          </button>
+      <div className="reports-header">
+        <h1 className="reports-title">Financial Reports</h1>
+        
+        <div className="header-actions">
+          {/* Blue Export Buttons */}
+          <div className="export-buttons">
+            <button 
+              className="export-btn"
+              onClick={() => handleDownload('csv')}
+            >
+              <Download size={16} />
+              CSV
+            </button>
+            <button 
+              className="export-btn"
+              onClick={() => handleDownload('json')}
+            >
+              <Download size={16} />
+              JSON
+            </button>
+          </div>
+          
+          {/* Time Filters */}
+          <div className="time-filters">
+            {[
+              { id: 'weekly', label: 'Weekly' },
+              { id: 'monthly', label: 'Monthly' },
+              { id: 'yearly', label: 'Yearly' },
+              { id: 'custom', label: 'Custom Range' }
+            ].map(({ id, label }) => (
+              <button
+                key={id}
+                className={`time-filter-btn ${reportType === id ? 'active' : ''}`}
+                onClick={() => setReportType(id)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          
+          {/* Range Selector */}
+          {reportType !== 'custom' && (
+            <div className="range-selector">
+              <div className="range-display">
+                <div className="range-display-text">
+                  <Calendar size={14} />
+                  {formatPeriodDisplay()}
+                </div>
+              </div>
+              
+              <div className="nav-arrows">
+                <button 
+                  className="nav-btn"
+                  onClick={() => navigatePeriod('prev')}
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                <button 
+                  className="nav-btn"
+                  onClick={() => navigatePeriod('next')}
+                  disabled={!canNavigateNext()}
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Report Type Tabs */}
-      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '2rem', gap: '0.5rem' }}>
-        {[
-          { id: 'weekly', label: 'Weekly', icon: Calendar },
-          { id: 'monthly', label: 'Monthly', icon: BarChart3 },
-          { id: 'yearly', label: 'Yearly', icon: TrendingUp }
-        ].map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            onClick={() => setReportType(id)}
-            style={{
-              background: reportType === id ? '#3b82f6' : 'white',
-              color: reportType === id ? 'white' : '#374151',
-              border: reportType === id ? 'none' : '1px solid #d1d5db',
-              borderRadius: '6px',
-              padding: '0.75rem 1rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              cursor: 'pointer',
-              fontSize: '0.875rem',
-              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
-            }}
-          >
-            <Icon size={18} />
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {/* Period Navigation */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '2rem', gap: '1rem' }}>
-        <button 
-          onClick={() => navigatePeriod('prev')}
-          style={{
-            background: 'white',
-            border: '1px solid #d1d5db',
-            borderRadius: '6px',
-            padding: '0.75rem',
-            cursor: 'pointer',
-            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
-          }}
-        >
-          <ChevronLeft size={20} />
-        </button>
-        <div style={{ 
-          background: 'white',
-          borderRadius: '8px',
-          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
-          padding: '1rem 2rem',
-          minWidth: '300px',
-          textAlign: 'center'
-        }}>
-          <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: '600' }}>{formatPeriodDisplay()}</h3>
+      {/* Custom Date Range Picker */}
+      {reportType === 'custom' && (
+        <div className="custom-range-picker">
+          <h3 className="custom-range-title">Select Date Range</h3>
+          <div className="custom-range-grid">
+            <div className="date-input-group">
+              <label className="date-label">Start Date</label>
+              <input
+                type="date"
+                className="date-input"
+                value={customStartDate}
+                onChange={(e) => setCustomStartDate(e.target.value)}
+              />
+            </div>
+            <div className="date-input-group">
+              <label className="date-label">End Date</label>
+              <input
+                type="date"
+                className="date-input"
+                value={customEndDate}
+                onChange={(e) => setCustomEndDate(e.target.value)}
+              />
+            </div>
+            <button
+              className="generate-btn"
+              onClick={fetchReports}
+              disabled={!customStartDate || !customEndDate || generatingCustomReport}
+            >
+              {generatingCustomReport ? 'Generating...' : 'Generate Report'}
+            </button>
+          </div>
         </div>
-        <button 
-          onClick={() => navigatePeriod('next')}
-          disabled={!canNavigateNext()}
-          style={{
-            background: canNavigateNext() ? 'white' : '#f9fafb',
-            border: '1px solid #d1d5db',
-            borderRadius: '6px',
-            padding: '0.75rem',
-            cursor: canNavigateNext() ? 'pointer' : 'not-allowed',
-            opacity: canNavigateNext() ? 1 : 0.5,
-            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
-          }}
-        >
-          <ChevronRight size={20} />
-        </button>
-      </div>
+      )}
 
       {/* Smart Insights */}
       {insights.length > 0 && (
-        <div style={{ marginBottom: '2rem' }}>
-          <h2 style={{ marginBottom: '1.5rem', fontSize: '1.5rem', fontWeight: '600' }}>Smart Insights</h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <div className="insights-section">
+          <h2 className="insights-title">Smart Insights</h2>
+          <div className="insights-grid">
             {insights.map((insight, index) => (
               <div 
                 key={index}
-                style={{
-                  padding: '1.5rem',
-                  borderRadius: '12px',
-                  border: 'none',
-                  boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
-                  background: insight.type === 'success' 
-                    ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.1) 0%, rgba(22, 163, 74, 0.1) 100%)'
-                    : insight.type === 'warning'
-                    ? 'linear-gradient(135deg, rgba(251, 191, 36, 0.1) 0%, rgba(245, 158, 11, 0.1) 100%)'
-                    : 'linear-gradient(135deg, rgba(249, 115, 22, 0.1) 0%, rgba(234, 88, 12, 0.1) 100%)',
-                  borderLeft: `4px solid ${
-                    insight.type === 'success' ? '#22c55e' : insight.type === 'warning' ? '#fbbf24' : '#f97316'
-                  }`
-                }}
+                className={`insight-card ${insight.type}`}
               >
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
-                  <div style={{ 
-                    padding: '0.25rem', 
-                    borderRadius: '50%', 
-                    background: insight.type === 'success' 
-                      ? 'rgba(34, 197, 94, 0.15)' 
-                      : insight.type === 'warning'
-                      ? 'rgba(251, 191, 36, 0.15)'
-                      : 'rgba(249, 115, 22, 0.15)'
-                  }}>
+                <div className="insight-content">
+                  <div className={`insight-icon ${insight.type}`}>
                     {insight.type === 'success' ? (
                       <TrendingUp size={16} style={{ color: '#22c55e' }} />
                     ) : insight.type === 'warning' ? (
@@ -1225,24 +1269,14 @@ const Reports = () => {
                       <TrendingDown size={16} style={{ color: '#f97316' }} />
                     )}
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <h4 style={{ 
-                      fontWeight: '600', 
-                      marginBottom: '0.5rem',
-                      color: insight.type === 'success' ? '#15803d' : insight.type === 'warning' ? '#92400e' : '#9a3412'
-                    }}>
+                  <div className="insight-text">
+                    <h4 className={`insight-title ${insight.type}`}>
                       {insight.title}
                     </h4>
-                    <p style={{ 
-                      marginBottom: '0.75rem',
-                      color: insight.type === 'success' ? '#166534' : insight.type === 'warning' ? '#a16207' : '#c2410c'
-                    }}>
+                    <p className={`insight-message ${insight.type}`}>
                       {insight.message}
                     </p>
-                    <p style={{ 
-                      fontSize: '0.875rem',
-                      color: insight.type === 'success' ? '#15803d' : insight.type === 'warning' ? '#92400e' : '#9a3412'
-                    }}>
+                    <p className={`insight-suggestion ${insight.type}`}>
                       💡 {insight.suggestion}
                     </p>
                   </div>
@@ -1254,80 +1288,40 @@ const Reports = () => {
       )}
 
       {/* Summary Cards */}
-      <div style={{ 
-        display: 'grid', 
-        gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', 
-        gap: '1.5rem', 
-        marginBottom: '2rem' 
-      }}>
-        <div style={{
-          background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-          color: 'white',
-          borderRadius: '12px',
-          padding: '1.5rem',
-          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-            <span style={{ fontSize: '0.875rem', opacity: 0.9 }}>Total Income</span>
+      <div className="summary-grid">
+        <div className="summary-card income">
+          <div className="summary-header">
+            <span className="summary-label">Total Income</span>
             <TrendingUp size={24} />
           </div>
-          <div style={{ fontSize: '1.875rem', fontWeight: '700' }}>{formatCurrency(totals.income)}</div>
+          <div className="summary-value">{formatCurrency(totals.income)}</div>
         </div>
         
-        <div style={{
-          background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
-          color: 'white',
-          borderRadius: '12px',
-          padding: '1.5rem',
-          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-            <span style={{ fontSize: '0.875rem', opacity: 0.9 }}>Total Expenses</span>
+        <div className="summary-card expense">
+          <div className="summary-header">
+            <span className="summary-label">Total Expenses</span>
             <TrendingDown size={24} />
           </div>
-          <div style={{ fontSize: '1.875rem', fontWeight: '700' }}>{formatCurrency(totals.expense)}</div>
+          <div className="summary-value">{formatCurrency(totals.expense)}</div>
         </div>
         
-        <div style={{
-          background: balance >= 0 
-            ? 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)'
-            : 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
-          color: 'white',
-          borderRadius: '12px',
-          padding: '1.5rem',
-          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-            <span style={{ fontSize: '0.875rem', opacity: 0.9 }}>Balance</span>
-            <div style={{ 
-              width: '20px', 
-              height: '20px', 
-              borderRadius: '50%', 
-              background: balance >= 0 ? '#10b981' : '#ef4444'
-            }} />
+        <div className={`summary-card balance ${balance < 0 ? 'negative' : ''}`}>
+          <div className="summary-header">
+            <span className="summary-label">Balance</span>
+            <div className={`balance-indicator ${balance < 0 ? 'negative' : ''}`} />
           </div>
-          <div style={{ fontSize: '1.875rem', fontWeight: '700' }}>
+          <div className="summary-value">
             {formatCurrency(balance)}
           </div>
         </div>
       </div>
 
       {/* Charts */}
-      <div style={{ 
-        display: 'grid', 
-        gridTemplateColumns: pieData ? 'repeat(auto-fit, minmax(400px, 1fr))' : '1fr', 
-        gap: '2rem',
-        marginBottom: '2rem'
-      }}>
+      <div className="charts-grid">
         {/* Main Chart */}
         {mainChartData && (
-          <div style={{
-            background: 'white',
-            borderRadius: '12px',
-            padding: '1.5rem',
-            boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
-          }}>
-            <div style={{ height: '400px', position: 'relative' }}>
+          <div className="chart-container">
+            <div className="chart-wrapper">
               <Bar data={mainChartData} options={chartOptions} />
             </div>
           </div>
@@ -1335,13 +1329,8 @@ const Reports = () => {
 
         {/* Pie Chart */}
         {pieData && (
-          <div style={{
-            background: 'white',
-            borderRadius: '12px',
-            padding: '1.5rem',
-            boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
-          }}>
-            <div style={{ height: '400px', position: 'relative' }}>
+          <div className="chart-container">
+            <div className="chart-wrapper">
               <Pie data={pieData} options={pieOptions} />
             </div>
           </div>
@@ -1352,102 +1341,35 @@ const Reports = () => {
       {(() => {
         const categoryData = reportType === 'yearly' ? reportData.categoryBreakdown : reportData.expensesByCategory;
         return categoryData && categoryData.length > 0 ? (
-          <div style={{
-            background: 'white',
-            borderRadius: '12px',
-            boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
-            overflow: 'hidden'
-          }}>
-            <div style={{
-              padding: '1.5rem',
-              borderBottom: '1px solid #e5e7eb',
-              background: '#f9fafb'
-            }}>
-              <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: '600' }}>Expense Breakdown by Category</h3>
+          <div className="category-table-container">
+            <div className="table-header">
+              <h3 className="table-title">Expense Breakdown by Category</h3>
             </div>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <div className="table-scroll">
+              <table className="category-table">
                 <thead>
-                  <tr style={{ background: '#f9fafb' }}>
-                    <th style={{ 
-                      padding: '1rem', 
-                      textAlign: 'left', 
-                      fontSize: '0.875rem', 
-                      fontWeight: '600', 
-                      color: '#374151',
-                      borderBottom: '1px solid #e5e7eb'
-                    }}>
-                      CATEGORY
-                    </th>
-                    <th style={{ 
-                      padding: '1rem', 
-                      textAlign: 'right', 
-                      fontSize: '0.875rem', 
-                      fontWeight: '600', 
-                      color: '#374151',
-                      borderBottom: '1px solid #e5e7eb'
-                    }}>
-                      AMOUNT
-                    </th>
-                    <th style={{ 
-                      padding: '1rem', 
-                      textAlign: 'right', 
-                      fontSize: '0.875rem', 
-                      fontWeight: '600', 
-                      color: '#374151',
-                      borderBottom: '1px solid #e5e7eb'
-                    }}>
-                      PERCENTAGE
-                    </th>
+                  <tr>
+                    <th>CATEGORY</th>
+                    <th>AMOUNT</th>
+                    <th>PERCENTAGE</th>
                   </tr>
                 </thead>
                 <tbody>
                   {categoryData.map((category, index) => {
                     const percentage = totals.expense > 0 ? ((category.amount / totals.expense) * 100).toFixed(1) : '0.0';
                     return (
-                      <tr key={index} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                        <td style={{ 
-                          padding: '1rem', 
-                          fontSize: '0.875rem', 
-                          color: '#374151',
-                          fontWeight: '500'
-                        }}>
-                          {category.category}
-                        </td>
-                        <td style={{ 
-                          padding: '1rem', 
-                          textAlign: 'right', 
-                          fontSize: '0.875rem', 
-                          color: '#374151',
-                          fontWeight: '600'
-                        }}>
-                          {formatCurrency(category.amount)}
-                        </td>
-                        <td style={{ 
-                          padding: '1rem', 
-                          textAlign: 'right', 
-                          fontSize: '0.875rem', 
-                          color: '#6b7280'
-                        }}>
-                          {percentage}%
-                        </td>
+                      <tr key={index}>
+                        <td className="category-name">{category.category}</td>
+                        <td className="category-amount">{formatCurrency(category.amount)}</td>
+                        <td className="category-percentage">{percentage}%</td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
             </div>
-            <div style={{
-              padding: '1rem 1.5rem',
-              background: '#f9fafb',
-              borderTop: '1px solid #e5e7eb'
-            }}>
-              <p style={{ 
-                margin: 0, 
-                fontSize: '0.875rem', 
-                color: '#6b7280',
-                textAlign: 'center'
-              }}>
+            <div className="table-footer">
+              <p className="generated-text">
                 Report generated on {new Date().toLocaleDateString('en-US', { 
                   year: 'numeric', 
                   month: 'long', 

@@ -7,6 +7,7 @@ const authRoutes = require('./routes/auth');
 const transactionRoutes = require('./routes/transactions');
 const reportRoutes = require('./routes/reports');
 
+
 // Connect to MongoDB
 connectDB();
 
@@ -21,6 +22,7 @@ app.use(express.json());
 app.use('/api/auth', authRoutes);
 app.use('/api/transactions', transactionRoutes);
 app.use('/api/reports', reportRoutes);
+
 
 app.get('/', (req, res) => {
   res.json({ message: 'Personal Finance Manager API with MongoDB' });

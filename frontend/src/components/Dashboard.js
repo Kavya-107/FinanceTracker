@@ -8,8 +8,7 @@ const Dashboard = ({ onAddTransaction }) => {
   const [displayTransactions, setDisplayTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [debugInfo, setDebugInfo] = useState({});
-  
+ 
   // Authentication state
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
@@ -32,22 +31,13 @@ const Dashboard = ({ onAddTransaction }) => {
 
   // Authentication check
   useEffect(() => {
-    console.log('🔍 Checking authentication status...');
     const token = localStorage.getItem('token');
-    
-    setDebugInfo(prev => ({
-      ...prev,
-      tokenExists: !!token,
-      tokenValue: token ? `${token.substring(0, 20)}...` : 'None',
-      timestamp: new Date().toISOString()
-    }));
+   
     
     if (token) {
-      console.log('✅ Token found in localStorage');
-      setIsAuthenticated(true);
+       setIsAuthenticated(true);
     } else {
-      console.warn('⚠️ No token found - user needs to login');
-      setError('Please login to view your transactions');
+       setError('Please login to view your transactions');
     }
     
     setAuthChecked(true);
@@ -106,7 +96,6 @@ const Dashboard = ({ onAddTransaction }) => {
 
   // Enhanced fetchAllTransactions with comprehensive debugging
   const fetchAllTransactions = useCallback(async () => {
-    console.log('🚀 Starting fetchAllTransactions...');
     setLoading(true);
     setError('');
 
@@ -119,11 +108,7 @@ const Dashboard = ({ onAddTransaction }) => {
         throw new Error('No authentication token found. Please login.');
       }
 
-      setDebugInfo(prev => ({
-        ...prev,
-        fetchStartTime: new Date().toISOString(),
-        fetchStatus: 'Starting...'
-      }));
+      
 
       console.log('📡 Calling transactionsAPI.getAll()...');
       const response = await transactionsAPI.getAll();
@@ -173,13 +158,7 @@ const Dashboard = ({ onAddTransaction }) => {
       setAllTransactions(normalizedTransactions);
       setDisplayTransactions(normalizedTransactions);
       
-      setDebugInfo(prev => ({
-        ...prev,
-        fetchEndTime: new Date().toISOString(),
-        fetchStatus: 'Success',
-        transactionCount: normalizedTransactions.length,
-        lastFetch: new Date().toISOString()
-      }));
+      
       
       console.log('✅ Transactions loaded successfully:', {
         total: normalizedTransactions.length,
@@ -198,13 +177,7 @@ const Dashboard = ({ onAddTransaction }) => {
       setAllTransactions([]);
       setDisplayTransactions([]);
       
-      setDebugInfo(prev => ({
-        ...prev,
-        fetchEndTime: new Date().toISOString(),
-        fetchStatus: 'Error',
-        lastError: error.message,
-        errorTime: new Date().toISOString()
-      }));
+      
       
     } finally {
       setLoading(false);
@@ -469,9 +442,7 @@ const Dashboard = ({ onAddTransaction }) => {
         <div style={{ textAlign: 'center', padding: '2rem' }}>
           <RefreshCw size={48} style={{ animation: 'spin 1s linear infinite', color: '#007bff', marginBottom: '1rem' }} />
           <div>Loading transactions...</div>
-          <div style={{ fontSize: '0.9rem', color: '#666', marginTop: '0.5rem' }}>
-            {debugInfo.fetchStatus && `Status: ${debugInfo.fetchStatus}`}
-          </div>
+          
         </div>
       </div>
     );
@@ -503,31 +474,7 @@ const Dashboard = ({ onAddTransaction }) => {
             </button>
           </div>
 
-          {/* Debug Information Panel (only show if there are issues) */}
-          {(error || Object.keys(debugInfo).length > 0) && (
-            <details style={{ 
-              marginTop: '1rem', 
-              padding: '1rem', 
-              background: '#f8f9fa', 
-              borderRadius: '6px',
-              fontSize: '0.9rem'
-            }}>
-              <summary style={{ cursor: 'pointer', fontWeight: 'bold', marginBottom: '0.5rem' }}>
-                🔍 Debug Information
-              </summary>
-              <div style={{ marginTop: '0.5rem' }}>
-                <div><strong>Authentication:</strong> {isAuthenticated ? '✅ Authenticated' : '❌ Not Authenticated'}</div>
-                <div><strong>Token Present:</strong> {debugInfo.tokenExists ? '✅ Yes' : '❌ No'}</div>
-                <div><strong>Total Transactions:</strong> {allTransactions.length}</div>
-                <div><strong>Displayed Transactions:</strong> {displayTransactions.length}</div>
-                <div><strong>Last Fetch:</strong> {debugInfo.lastFetch || 'Never'}</div>
-                <div><strong>Fetch Status:</strong> {debugInfo.fetchStatus || 'Unknown'}</div>
-                {debugInfo.lastError && (
-                  <div><strong>Last Error:</strong> <span style={{ color: '#dc3545' }}>{debugInfo.lastError}</span></div>
-                )}
-              </div>
-            </details>
-          )}
+         
 
           {error && (
             <div className="alert alert-danger" style={{ 
